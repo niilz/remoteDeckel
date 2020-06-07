@@ -6,74 +6,52 @@
 
 #![feature(proc_macro_hygiene, decl_macro)]
 
-#[macro_use]
-extern crate rocket;
 use deckel_bot::*;
-use reqwest::{self, Client};
-use rocket::response::{content, status};
-use rocket::State;
+use reqwest;
+use rocket::response::content;
+use rocket::{post, routes};
 use rocket_contrib::json::Json;
 use serde_json;
 use serde_yaml;
 use std::collections::BTreeMap;
-use tokio::main;
-
-#[get("/")]
-fn index() -> &'static str {
-    "Hello World"
-}
+use tokio;
 
 #[post("/", format = "json", data = "<update>")]
 fn take_order(update: Option<Json<Update>>) -> content::Json<String> {
-    let message = match update {
+    let response_message = match update {
         Some(data) => {
-            println!("{:?}", data);
-            process_order(data)
+            println!("Incoming-Update: {:?}", data);
+            construct_response(data)
         }
-        None => panic!("could not parse json"),
-    };
-    let res = ResponseMessage {
-        method: "sendMessage".to_string(),
-        chat_id: 123456,
-        text: "It Works!".to_string(),
+        None => panic!("Could not parse incoming Update-json"),
     };
 
-    println!("RES: {:?}", res);
-    let json = match serde_json::to_string(&res) {
+    let response_as_json = match response_message {
         Ok(json) => json,
         Err(e) => panic!("{}", e),
     };
-    content::Json(json)
-}
-fn test_print() {
-    println!("TEST");
+    content::Json(response_as_json)
 }
 
-fn process_order(json_data: Json<Update>) -> serde_json::Result<String> {
-    let json_res = match &json_data.message {
-        Some(message) => match &message.text {
-            Some(text) if text.to_lowercase() == "bier" => SendMessage {
-                chat_id: message.chat.id,
-                text: "Vielen Dank für deine Bestellung.".to_string(),
-            },
-            Some(text) => SendMessage {
-                chat_id: message.chat.id,
-                text: format!(
-                    "Tut mir leid, {} haben wir nicht. Hier gibt's nur Bier.",
-                    text
-                ),
-            },
-            None => SendMessage {
-                chat_id: message.chat.id,
-                text: "oops, da ging gehörig was schief.".to_string(),
-            },
-        },
-        None => {
-            eprintln!("Could not parse incoming message.");
-            unreachable!();
-        }
+fn construct_response(json_data: Json<Update>) -> serde_json::Result<String> {
+    let method = "sendMessage".to_string();
+    let update_message = match &json_data.message {
+        Some(message) => message,
+        None => panic!("No message in Update-Json"),
     };
-    serde_json::to_string(&json_res)
+    let response_text = match &update_message.text {
+        Some(text) if text.to_lowercase() == "bier" => {
+            "👍 Ich schreib's auf deinen Deckel.".to_string()
+        }
+        Some(text) => format!(
+            "Was soll das: {}cocktail? Du weißt hier gibt's nur Bier.",
+            text
+        ),
+        None => panic!("No text in Message!"),
+    };
+    let chat_id = update_message.chat.id;
+    let response_message = ResponseMessage::new(method, chat_id, response_text);
+    serde_json::to_string(&response_message)
 }
 
 fn bot_method_url(method: &str, api_key: &str) -> String {
@@ -89,14 +67,18 @@ async fn main() -> reqwest::Result<()> {
         serde_yaml::from_reader(config_yml).expect("Could not convert yml to serde_yaml");
     let api_key = config_yml.get("apikey").unwrap();
 
-    // register update webHook
-    let bot_base_url = "https://74832e788076.ngrok.io";
+    // Register update webHook with Telegram
+    // TODO: Automate ngrok setup, or actually host it
+    let bot_base_url = "https://b4c195aa279f.ngrok.io";
     let telegram_set_webhook_url = format!(
         "{}?url={}",
         bot_method_url("setWebhook", api_key),
         bot_base_url
     );
-    println!("setWebhook command: {}", telegram_set_webhook_url);
+    println!(
+        "Tries to register webHook with GET to: {}",
+        telegram_set_webhook_url
+    );
 
     let webhook_response = reqwest::get(&telegram_set_webhook_url)
         .await?
@@ -110,7 +92,7 @@ async fn main() -> reqwest::Result<()> {
         .await?;
     println!("Webhook-Info: {:?}", webhook_info);
 
-    // Setup routes and state
+    // Setup routes
     rocket::ignite().mount("/", routes![take_order]).launch();
     Ok(())
 }

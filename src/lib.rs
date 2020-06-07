@@ -1,4 +1,3 @@
-use rocket::http::{ContentType, Header};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,4 +56,13 @@ pub struct ResponseMessage {
     pub method: String,
     pub chat_id: i32,
     pub text: String,
+}
+impl ResponseMessage {
+    pub fn new(method: String, chat_id: i32, text: String) -> Self {
+        ResponseMessage {
+            method,
+            chat_id,
+            text,
+        }
+    }
 }
