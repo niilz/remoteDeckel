@@ -6,9 +6,9 @@
 -- Configure table here (up.sql) and drop (in down.sql)
 -- Create user-table: diesel migration run
 CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY,
   name VARCHAR NOT NULL,
-  drink_count SMALLINT NOT NULL,
+  drink_count SMALLINT NOT NULL default 0,
   price MONEY NOT NULL default 0.0,
   last_paid TIMESTAMP NOT NULL default CURRENT_TIMESTAMP,
   last_total MONEY NOT NULL default 0.0

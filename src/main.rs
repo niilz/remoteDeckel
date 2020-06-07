@@ -2,7 +2,10 @@
 
 #![feature(proc_macro_hygiene, decl_macro)]
 
-use deckel_bot::telegram_types::*;
+use deckel_bot;
+use deckel_bot::models;
+use deckel_bot::telegram_types::{ReplyKeyboardMarkup, ResponseMessage, Update};
+use diesel::prelude::*;
 use dotenv::dotenv;
 use reqwest;
 use rocket::response::content;
@@ -30,6 +33,24 @@ fn take_order(update: Option<Json<Update>>) -> content::Json<String> {
     content::Json(response_as_json)
 }
 
+static WELCOME_MESSAGE: &'static str = r"Willkommen Mensch!
+
+Ich bin's, der remoteDeckel_bot.
+
+Zusammen können wir saufen UND unsere Lieblingskneipe supporten.
+
+Bestell' einfach deine Biers bei mir und ich schreib' sie auf deinen Deckel.
+
+Du bestimmst wieviel du pro Getränk spenden möchtest.
+
+Wenn OberkanteUnterlippe erreicht ist, gib mir Bescheid, um den 'Schaden' zu begleichen:
+- Dann wird dein Deckel genullt
+- und deine Spende übermittelt
+
+Und keine Sorge. Wenn der Durst doch größer war als es die Haushaltskasse erlaubt. Du kannst jederzeit den Spendenbetrag reduzieren oder die ganze Zeche prellen.
+
+Na dann, Prost!";
+
 fn construct_response(json_data: Json<Update>) -> serde_json::Result<String> {
     let method = "sendMessage".to_string();
     let update_message = match &json_data.message {
@@ -41,7 +62,7 @@ fn construct_response(json_data: Json<Update>) -> serde_json::Result<String> {
         None => panic!("No text in Message!"),
     };
     let response_text = if request_text == "/start" {
-        "Schön dich zu sehen. Was darf's sein?".to_string()
+        WELCOME_MESSAGE.to_string()
     } else if request_text.contains("bier") {
         // TODO: "Increase tab-count"
         "👍 Ich schreib's auf deinen Deckel.".to_string()
@@ -82,7 +103,7 @@ async fn main() -> reqwest::Result<()> {
 
     // Register update webHook with Telegram
     // TODO: Automate ngrok setup, or actually host it
-    let bot_base_url = "https://b4c195aa279f.ngrok.io";
+    let bot_base_url = "https://3ec64f547f45.ngrok.io";
     let telegram_set_webhook_url = format!(
         "{}?url={}",
         bot_method_url("setWebhook", api_key),
@@ -105,6 +126,35 @@ async fn main() -> reqwest::Result<()> {
         .await?;
     println!("Webhook-Info: {:?}", webhook_info);
 
+    // Test DB Connection
+    use deckel_bot::schema::users;
+    use deckel_bot::schema::users::dsl::*;
+    use models::{NewUser, User};
+
+    let new_user = NewUser {
+        id: 1,
+        name: "hans",
+    };
+
+    let connection = deckel_bot::establish_connection();
+
+    let new_user: User = diesel::insert_into(users::table)
+        .values(&new_user)
+        .get_result(&connection)
+        .expect("Error saving user.");
+    println!("inserted user: {:?}", new_user);
+
+    let results = users
+        .filter(name.eq("hans"))
+        .limit(2)
+        .load::<models::User>(&connection)
+        .expect("Error loading Users");
+    println!("Start Result-Printing");
+    for user in results {
+        println!("{:?}", user.last_paid);
+        println!("{:?}", user.last_total);
+    }
+    println!("Stop Result-Printing");
     // Setup routes
     rocket::ignite().mount("/", routes![take_order]).launch();
     Ok(())
