@@ -39,18 +39,32 @@ fn construct_response(json_data: Json<Update>) -> serde_json::Result<String> {
         Some(message) => message,
         None => panic!("No message in Update-Json"),
     };
-    let response_text = match &update_message.text {
-        Some(text) if text.to_lowercase() == "bier" => {
-            "👍 Ich schreib's auf deinen Deckel.".to_string()
-        }
-        Some(text) => format!(
-            "Was soll das: {}cocktail? Du weißt hier gibt's nur Bier.",
-            text
-        ),
+    let request_text = match &update_message.text {
+        Some(text) => text.to_lowercase(),
         None => panic!("No text in Message!"),
+    };
+    let response_text = if request_text == "/start" {
+        "Schön dich zu sehen. Was darf's sein?".to_string()
+    } else if request_text.contains("bier") {
+        // TODO: "Increase tab-count"
+        "👍 Ich schreib's auf deinen Deckel.".to_string()
+    } else if request_text.contains("schaden") {
+        // TODO: persist actual damage
+        let damage = 42;
+        format!("Dein derzeitiger Deckel beträgt {},-€.", damage)
+    } else if request_text.contains("zahlen") {
+        // TODO: initiate payment
+        let total = 199;
+        format!(
+            "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
+            total
+        )
+    } else {
+        "Ehm, darauf weiß ich keine Antwort...".to_string()
     };
     let chat_id = update_message.chat.id;
     let response_message = ResponseMessage::new(method, chat_id, response_text);
+    let response_message = response_message.keyboard(ReplyKeyboardMarkup::default());
     serde_json::to_string(&response_message)
 }
 

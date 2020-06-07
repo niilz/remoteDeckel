@@ -56,6 +56,7 @@ pub struct ResponseMessage {
     pub method: String,
     pub chat_id: i32,
     pub text: String,
+    pub reply_markup: Option<ReplyKeyboardMarkup>,
 }
 impl ResponseMessage {
     pub fn new(method: String, chat_id: i32, text: String) -> Self {
@@ -63,6 +64,30 @@ impl ResponseMessage {
             method,
             chat_id,
             text,
+            reply_markup: None,
+        }
+    }
+    pub fn keyboard(mut self, keyboard: ReplyKeyboardMarkup) -> ResponseMessage {
+        self.reply_markup = Some(keyboard);
+        self
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReplyKeyboardMarkup {
+    keyboard: Vec<Vec<String>>,
+    resize_keyboard: bool,
+}
+impl Default for ReplyKeyboardMarkup {
+    fn default() -> Self {
+        let keyboard = vec![
+            vec!["🍺 Bring mir ein Bier! 🍺".to_string()],
+            vec!["😬 Was is mein Schaden? 😬".to_string()],
+            vec!["🙈 Augen zu und zahlen. 💶".to_string()],
+        ];
+        ReplyKeyboardMarkup {
+            keyboard,
+            resize_keyboard: false,
         }
     }
 }
