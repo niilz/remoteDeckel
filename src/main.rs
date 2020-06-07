@@ -1,12 +1,9 @@
 // Version 0.1
-// How to in Development:
-// - set -x ROCKET_PORT 8443 (telgram only allows certain ports)
-// - ngrok http 8443 (launches ngrok to re-route traffic through a "real" ip-address)
-// - set ngrok's https url as "telegram_base_url"
 
 #![feature(proc_macro_hygiene, decl_macro)]
 
-use deckel_bot::*;
+use deckel_bot::telegram_types::*;
+use dotenv::dotenv;
 use reqwest;
 use rocket::response::content;
 use rocket::{post, routes};
@@ -75,6 +72,8 @@ fn bot_method_url(method: &str, api_key: &str) -> String {
 
 #[tokio::main]
 async fn main() -> reqwest::Result<()> {
+    // Set env-variables (port and postgres-db)
+    dotenv().ok();
     // Get api_key from config-file
     let config_yml = std::fs::File::open("config.yml").expect("Could not read config.yml");
     let config_yml: BTreeMap<String, String> =
