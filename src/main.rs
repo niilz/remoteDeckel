@@ -16,23 +16,6 @@ use serde_yaml;
 use std::collections::BTreeMap;
 use tokio;
 
-#[post("/", format = "json", data = "<update>")]
-fn take_order(update: Option<Json<Update>>) -> content::Json<String> {
-    let response_message = match update {
-        Some(data) => {
-            println!("Incoming-Update: {:?}", data);
-            construct_response(data)
-        }
-        None => panic!("Could not parse incoming Update-json"),
-    };
-
-    let response_as_json = match response_message {
-        Ok(json) => json,
-        Err(e) => panic!("{}", e),
-    };
-    content::Json(response_as_json)
-}
-
 static WELCOME_MESSAGE: &'static str = r"Willkommen Mensch!
 
 Ich bin's, der remoteDeckel_bot.
@@ -50,6 +33,23 @@ Wenn OberkanteUnterlippe erreicht ist, gib mir Bescheid, um den 'Schaden' zu beg
 Und keine Sorge. Wenn der Durst doch größer war als es die Haushaltskasse erlaubt. Du kannst jederzeit den Spendenbetrag reduzieren oder die ganze Zeche prellen.
 
 Na dann, Prost!";
+
+#[post("/", format = "json", data = "<update>")]
+fn take_order(update: Option<Json<Update>>) -> content::Json<String> {
+    let response_message = match update {
+        Some(data) => {
+            println!("Incoming-Update: {:?}", data);
+            construct_response(data)
+        }
+        None => panic!("Could not parse incoming Update-json"),
+    };
+
+    let response_as_json = match response_message {
+        Ok(json) => json,
+        Err(e) => panic!("{}", e),
+    };
+    content::Json(response_as_json)
+}
 
 fn construct_response(json_data: Json<Update>) -> serde_json::Result<String> {
     let method = "sendMessage".to_string();
@@ -103,7 +103,7 @@ async fn main() -> reqwest::Result<()> {
 
     // Register update webHook with Telegram
     // TODO: Automate ngrok setup, or actually host it
-    let bot_base_url = "https://3ec64f547f45.ngrok.io";
+    let bot_base_url = "https://50a3b516f68f.ngrok.io";
     let telegram_set_webhook_url = format!(
         "{}?url={}",
         bot_method_url("setWebhook", api_key),
@@ -113,48 +113,19 @@ async fn main() -> reqwest::Result<()> {
         "Tries to register webHook with GET to: {}",
         telegram_set_webhook_url
     );
+    eprintln!("Webhook setup disabled");
+    //    let webhook_response = reqwest::get(&telegram_set_webhook_url)
+    //        .await?
+    //        .text()
+    //        .await?;
+    //    println!("SetWebhook-Response: {:?}", webhook_response);
+    //
+    //    let webhook_info = reqwest::get(&bot_method_url("getWebhookInfo", api_key))
+    //        .await?
+    //        .text()
+    //        .await?;
+    //    println!("Webhook-Info: {:?}", webhook_info);
 
-    let webhook_response = reqwest::get(&telegram_set_webhook_url)
-        .await?
-        .text()
-        .await?;
-    println!("SetWebhook-Response: {:?}", webhook_response);
-
-    let webhook_info = reqwest::get(&bot_method_url("getWebhookInfo", api_key))
-        .await?
-        .text()
-        .await?;
-    println!("Webhook-Info: {:?}", webhook_info);
-
-    // Test DB Connection
-    use deckel_bot::schema::users;
-    use deckel_bot::schema::users::dsl::*;
-    use models::{NewUser, User};
-
-    let new_user = NewUser {
-        id: 1,
-        name: "hans",
-    };
-
-    let connection = deckel_bot::establish_connection();
-
-    let new_user: User = diesel::insert_into(users::table)
-        .values(&new_user)
-        .get_result(&connection)
-        .expect("Error saving user.");
-    println!("inserted user: {:?}", new_user);
-
-    let results = users
-        .filter(name.eq("hans"))
-        .limit(2)
-        .load::<models::User>(&connection)
-        .expect("Error loading Users");
-    println!("Start Result-Printing");
-    for user in results {
-        println!("{:?}", user.last_paid);
-        println!("{:?}", user.last_total);
-    }
-    println!("Stop Result-Printing");
     // Setup routes
     rocket::ignite().mount("/", routes![take_order]).launch();
     Ok(())
