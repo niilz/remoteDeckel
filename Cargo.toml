@@ -5,6 +5,13 @@ authors = ["nilSinger <niilz@outlook.de>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "bot_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "deckel_bot"
+path = "src/bin.rs"
 
 [dependencies]
 rocket = "0.4.5"

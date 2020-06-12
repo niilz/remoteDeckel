@@ -2,11 +2,10 @@
 
 #![feature(proc_macro_hygiene, decl_macro)]
 
-use decke_bot::db;
-use deckel_bot;
-use deckel_bot::models;
-use deckel_bot::telegram_types::{ReplyKeyboardMarkup, ResponseMessage, Update};
-use diesel::prelude::*;
+use bot_lib;
+use bot_lib::db;
+use bot_lib::models;
+use bot_lib::telegram_types::{ReplyKeyboardMarkup, ResponseMessage, Update};
 use dotenv::dotenv;
 use reqwest;
 use rocket::response::content;
@@ -53,20 +52,35 @@ fn handle_update(dbConn: db::UserDbConn, update: Option<Json<Update>>) -> conten
 }
 
 fn react(update: Json<Update>, dbConn: db::UserDbConn) -> serde_json::Result<String> {
-    let message = match update.message {
+    let message = match &update.message {
         Some(message) => message,
         None => panic!("update had not message"),
     };
-    let user = match message.from {
+    let telegram_user = match &message.from {
         Some(user) => user,
         None => panic!("message has no sender?..."),
     };
-    println!("USER: {:?}", user);
-    // Does user exist?
-    let db_user = models::NewUser::from_telegram_user(user);
-    println!("DB_User: {:?}", db_user);
-    // get user-data
-    // otherwise put user in db
+    println!(
+        "Tries to get user: {}, with id: {} from db.",
+        telegram_user.first_name, telegram_user.id
+    );
+    // Does user exist in db?
+    let maybe_user = db::get_user_by_id(telegram_user.id, dbConn);
+    let (user, conn) = match maybe_user {
+        (Ok(user), conn) => {
+            println!("Found user: {}", user.name);
+            (user, conn)
+        }
+        // Put user in db if not exists
+        (Err(_), conn) => {
+            println!(
+                "User not found. Creates new db-entry for user: {}, with id: {}",
+                telegram_user.first_name, telegram_user.id
+            );
+            db::save_user(telegram_user, conn)
+        }
+    };
+    println!("DB_User: {:?}", user);
 
     let method = "sendMessage".to_string();
     let request_text = match &message.text {
@@ -115,7 +129,7 @@ async fn main() -> reqwest::Result<()> {
 
     // Register update webHook with Telegram
     // TODO: Automate ngrok setup, or actually host it
-    let bot_base_url = "https://09612a2395eb.ngrok.io";
+    let bot_base_url = "https://26b4c3c4b8b1.ngrok.io";
     let telegram_set_webhook_url = format!(
         "{}?url={}",
         bot_method_url("setWebhook", api_key),
@@ -125,18 +139,18 @@ async fn main() -> reqwest::Result<()> {
         "Tries to register webHook with GET to: {}",
         telegram_set_webhook_url
     );
-    eprintln!("Webhook setup disabled");
-    // let webhook_response = reqwest::get(&telegram_set_webhook_url)
-    //     .await?
-    //     .text()
-    //     .await?;
-    // println!("SetWebhook-Response: {:?}", webhook_response);
+    //    eprintln!("Webhook setup disabled");
+    let webhook_response = reqwest::get(&telegram_set_webhook_url)
+        .await?
+        .text()
+        .await?;
+    println!("SetWebhook-Response: {:?}", webhook_response);
 
-    // let webhook_info = reqwest::get(&bot_method_url("getWebhookInfo", api_key))
-    //     .await?
-    //     .text()
-    //     .await?;
-    // println!("Webhook-Info: {:?}", webhook_info);
+    let webhook_info = reqwest::get(&bot_method_url("getWebhookInfo", api_key))
+        .await?
+        .text()
+        .await?;
+    println!("Webhook-Info: {:?}", webhook_info);
 
     // Setup routes
     rocket::ignite()

@@ -1,0 +1,4 @@
+# needed to say where the db is
+
+[global.databases.remote_deckel]
+url = "postgres://niilz:spendenalarm@localhost/remote_deckel"
