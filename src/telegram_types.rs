@@ -17,12 +17,12 @@ pub struct Message {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
-    id: i32,
-    is_bot: bool,
-    first_name: String,
-    last_name: Option<String>,
-    username: Option<String>,
-    language_code: Option<String>,
+    pub id: i32,
+    pub is_bot: bool,
+    pub first_name: String,
+    pub last_name: Option<String>,
+    pub username: Option<String>,
+    pub language_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -2,6 +2,7 @@
 
 #![feature(proc_macro_hygiene, decl_macro)]
 
+use decke_bot::db;
 use deckel_bot;
 use deckel_bot::models;
 use deckel_bot::telegram_types::{ReplyKeyboardMarkup, ResponseMessage, Update};
@@ -35,11 +36,11 @@ Und keine Sorge. Wenn der Durst doch größer war als es die Haushaltskasse erla
 Na dann, Prost!";
 
 #[post("/", format = "json", data = "<update>")]
-fn take_order(update: Option<Json<Update>>) -> content::Json<String> {
+fn handle_update(dbConn: db::UserDbConn, update: Option<Json<Update>>) -> content::Json<String> {
     let response_message = match update {
-        Some(data) => {
-            println!("Incoming-Update: {:?}", data);
-            construct_response(data)
+        Some(update) => {
+            println!("Incoming-Update: {:?}", update);
+            react(update, dbConn)
         }
         None => panic!("Could not parse incoming Update-json"),
     };
@@ -51,13 +52,24 @@ fn take_order(update: Option<Json<Update>>) -> content::Json<String> {
     content::Json(response_as_json)
 }
 
-fn construct_response(json_data: Json<Update>) -> serde_json::Result<String> {
-    let method = "sendMessage".to_string();
-    let update_message = match &json_data.message {
+fn react(update: Json<Update>, dbConn: db::UserDbConn) -> serde_json::Result<String> {
+    let message = match update.message {
         Some(message) => message,
-        None => panic!("No message in Update-Json"),
+        None => panic!("update had not message"),
     };
-    let request_text = match &update_message.text {
+    let user = match message.from {
+        Some(user) => user,
+        None => panic!("message has no sender?..."),
+    };
+    println!("USER: {:?}", user);
+    // Does user exist?
+    let db_user = models::NewUser::from_telegram_user(user);
+    println!("DB_User: {:?}", db_user);
+    // get user-data
+    // otherwise put user in db
+
+    let method = "sendMessage".to_string();
+    let request_text = match &message.text {
         Some(text) => text.to_lowercase(),
         None => panic!("No text in Message!"),
     };
@@ -80,7 +92,7 @@ fn construct_response(json_data: Json<Update>) -> serde_json::Result<String> {
     } else {
         "Ehm, darauf weiß ich keine Antwort...".to_string()
     };
-    let chat_id = update_message.chat.id;
+    let chat_id = message.chat.id;
     let response_message = ResponseMessage::new(method, chat_id, response_text);
     let response_message = response_message.keyboard(ReplyKeyboardMarkup::default());
     serde_json::to_string(&response_message)
@@ -103,7 +115,7 @@ async fn main() -> reqwest::Result<()> {
 
     // Register update webHook with Telegram
     // TODO: Automate ngrok setup, or actually host it
-    let bot_base_url = "https://50a3b516f68f.ngrok.io";
+    let bot_base_url = "https://09612a2395eb.ngrok.io";
     let telegram_set_webhook_url = format!(
         "{}?url={}",
         bot_method_url("setWebhook", api_key),
@@ -114,19 +126,22 @@ async fn main() -> reqwest::Result<()> {
         telegram_set_webhook_url
     );
     eprintln!("Webhook setup disabled");
-    //    let webhook_response = reqwest::get(&telegram_set_webhook_url)
-    //        .await?
-    //        .text()
-    //        .await?;
-    //    println!("SetWebhook-Response: {:?}", webhook_response);
-    //
-    //    let webhook_info = reqwest::get(&bot_method_url("getWebhookInfo", api_key))
-    //        .await?
-    //        .text()
-    //        .await?;
-    //    println!("Webhook-Info: {:?}", webhook_info);
+    // let webhook_response = reqwest::get(&telegram_set_webhook_url)
+    //     .await?
+    //     .text()
+    //     .await?;
+    // println!("SetWebhook-Response: {:?}", webhook_response);
+
+    // let webhook_info = reqwest::get(&bot_method_url("getWebhookInfo", api_key))
+    //     .await?
+    //     .text()
+    //     .await?;
+    // println!("Webhook-Info: {:?}", webhook_info);
 
     // Setup routes
-    rocket::ignite().mount("/", routes![take_order]).launch();
+    rocket::ignite()
+        .mount("/", routes![handle_update])
+        .attach(db::UserDbConn::fairing())
+        .launch();
     Ok(())
 }
