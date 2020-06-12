@@ -3,3 +3,4 @@ config*
 updateJson
 .env
 notes*
+rocket.toml
