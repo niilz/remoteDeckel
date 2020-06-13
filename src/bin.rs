@@ -2,6 +2,9 @@
 
 #![feature(proc_macro_hygiene, decl_macro)]
 
+#[macro_use]
+extern crate rocket;
+
 use bot_lib;
 use bot_lib::db;
 use bot_lib::models;
@@ -39,7 +42,7 @@ fn handle_update(dbConn: db::UserDbConn, update: Option<Json<Update>>) -> conten
     let response_message = match update {
         Some(update) => {
             println!("Incoming-Update: {:?}", update);
-            react(update, dbConn)
+            react(update, &dbConn)
         }
         None => panic!("Could not parse incoming Update-json"),
     };
@@ -51,7 +54,7 @@ fn handle_update(dbConn: db::UserDbConn, update: Option<Json<Update>>) -> conten
     content::Json(response_as_json)
 }
 
-fn react(update: Json<Update>, dbConn: db::UserDbConn) -> serde_json::Result<String> {
+fn react(update: Json<Update>, dbConn: &db::UserDbConn) -> serde_json::Result<String> {
     let message = match &update.message {
         Some(message) => message,
         None => panic!("update had not message"),
@@ -66,18 +69,18 @@ fn react(update: Json<Update>, dbConn: db::UserDbConn) -> serde_json::Result<Str
     );
     // Does user exist in db?
     let maybe_user = db::get_user_by_id(telegram_user.id, dbConn);
-    let (user, conn) = match maybe_user {
-        (Ok(user), conn) => {
+    let user = match maybe_user {
+        Ok(user) => {
             println!("Found user: {}", user.name);
-            (user, conn)
+            user
         }
         // Put user in db if not exists
-        (Err(_), conn) => {
+        Err(_) => {
             println!(
                 "User not found. Creates new db-entry for user: {}, with id: {}",
                 telegram_user.first_name, telegram_user.id
             );
-            db::save_user(telegram_user, conn)
+            db::save_user(telegram_user, dbConn)
         }
     };
     println!("DB_User: {:?}", user);
@@ -139,18 +142,18 @@ async fn main() -> reqwest::Result<()> {
         "Tries to register webHook with GET to: {}",
         telegram_set_webhook_url
     );
-    //    eprintln!("Webhook setup disabled");
-    let webhook_response = reqwest::get(&telegram_set_webhook_url)
-        .await?
-        .text()
-        .await?;
-    println!("SetWebhook-Response: {:?}", webhook_response);
+    eprintln!("Webhook setup disabled");
+    // let webhook_response = reqwest::get(&telegram_set_webhook_url)
+    //     .await?
+    //     .text()
+    //     .await?;
+    // println!("SetWebhook-Response: {:?}", webhook_response);
 
-    let webhook_info = reqwest::get(&bot_method_url("getWebhookInfo", api_key))
-        .await?
-        .text()
-        .await?;
-    println!("Webhook-Info: {:?}", webhook_info);
+    // let webhook_info = reqwest::get(&bot_method_url("getWebhookInfo", api_key))
+    //     .await?
+    //     .text()
+    //     .await?;
+    // println!("Webhook-Info: {:?}", webhook_info);
 
     // Setup routes
     rocket::ignite()
