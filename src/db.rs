@@ -1,5 +1,5 @@
 use crate::models::{NewUser, User};
-use crate::schema::users::dsl::{id, name, users};
+use crate::schema::users::dsl::{drink_count, id, name, users};
 use crate::telegram_types;
 use diesel::prelude::*;
 use rocket_contrib::databases::diesel::PgConnection;
@@ -28,6 +28,18 @@ pub fn save_user(new_user: &telegram_types::User, conn: &PgConnection) -> User {
     new_user
 }
 
+pub fn get_user_by_id(given_id: i32, conn: &PgConnection) -> Result<User, diesel::result::Error> {
+    users.find(given_id).first(conn)
+}
+
+pub fn increase_order(amount: i16, conn: &PgConnection) -> usize {
+    let updated_count = diesel::update(users)
+        .set(drink_count.eq(drink_count + amount))
+        .execute(conn)
+        .expect("Could not increase order");
+    updated_count
+}
+
 pub fn delete_users_by_name(user_name: &str, conn: &PgConnection) -> usize {
     let deleted_count = diesel::delete(users.filter(name.eq(user_name)))
         .execute(conn)
@@ -39,10 +51,6 @@ pub fn delete_user_by_id(given_id: i32, conn: &PgConnection) -> Result<i32, dies
         .returning(id)
         .get_result(conn);
     deleted_id
-}
-
-pub fn get_user_by_id(given_id: i32, conn: &PgConnection) -> Result<User, diesel::result::Error> {
-    users.find(given_id).first(conn)
 }
 
 pub fn show(conn: &PgConnection) {

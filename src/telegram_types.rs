@@ -6,7 +6,7 @@ pub struct Update {
     pub message: Option<Message>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub message_id: i32,
     pub from: Option<User>,
@@ -15,7 +15,7 @@ pub struct Message {
     pub text: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: i32,
     pub is_bot: bool,
@@ -25,7 +25,7 @@ pub struct User {
     pub language_code: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chat {
     pub id: i32,
     #[serde(rename = "type")]
