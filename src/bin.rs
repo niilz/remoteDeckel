@@ -82,7 +82,10 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
         Some(user) => user,
         None => panic!("message has no sender?...(from = None)"),
     };
-    let current_user = get_user_from_db(telegram_user, &conn);
+    let current_user = match get_user_from_db(&telegram_user, &conn) {
+        Ok(user) => user,
+        Err(_) => persist_new_user(&telegram_user, &conn),
+    };
     let chat_id = incoming_message.chat.id;
     let bot_context = BotContext::new(current_user, conn, chat_id);
     let request_type = get_request_type(&incoming_message);
@@ -111,27 +114,23 @@ fn get_request_type(message: &telegram_types::Message) -> RequestType {
     RequestType::Unknown
 }
 
-fn get_user_from_db(telegram_user: &telegram_types::User, conn: &db::UserDbConn) -> models::User {
+fn get_user_from_db(
+    telegram_user: &telegram_types::User,
+    conn: &db::UserDbConn,
+) -> Result<models::User, diesel::result::Error> {
     println!(
         "Tries to get user: {}, with id: {} from db.",
         telegram_user.first_name, telegram_user.id
     );
-    let maybe_user = db::get_user_by_id(telegram_user.id, conn);
-    let user = match maybe_user {
-        Ok(user) => {
-            println!("Found user: {}", user.name);
-            user
-        }
-        Err(_) => {
-            println!(
-                "User not found. Creates new db-entry for user: {}, with id: {}",
-                telegram_user.first_name, telegram_user.id
-            );
-            db::save_user(telegram_user, conn)
-        }
-    };
-    println!("Current user: {:?}", user);
-    user
+    db::get_user_by_id(telegram_user.id, conn)
+}
+
+fn persist_new_user(telegram_user: &telegram_types::User, conn: &db::UserDbConn) -> models::User {
+    println!(
+        "Saves user: {}, with id: {} to db.",
+        telegram_user.first_name, telegram_user.id
+    );
+    db::save_user(telegram_user, conn)
 }
 
 fn bot_method_url(method: &str, api_key: &str) -> String {
