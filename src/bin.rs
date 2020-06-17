@@ -35,9 +35,11 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
         Err(_) => persist_new_user(&telegram_user, &conn),
     };
     let chat_id = incoming_message.chat.id;
+    let user_text = get_text_from_message(&incoming_message);
     let timestamp = incoming_message.date;
     let keyboards = Keyboards::init();
-    let mut bot_context = BotContext::new(current_user, conn, chat_id, timestamp, keyboards);
+    let mut bot_context =
+        BotContext::new(current_user, conn, chat_id, user_text, timestamp, keyboards);
     let request_type = bot_context.get_request_type(&incoming_message);
 
     let json_response = match bot_context.handle_request(request_type) {
@@ -70,6 +72,7 @@ struct BotContext {
     current_user: models::User,
     conn: db::UserDbConn,
     chat_id: i32,
+    request_message: String,
     timestamp: NaiveDateTime,
     keyboards: Keyboards,
 }
@@ -79,6 +82,7 @@ impl BotContext {
         current_user: models::User,
         conn: db::UserDbConn,
         chat_id: i32,
+        request_message: String,
         timestamp: i32,
         keyboards: Keyboards,
     ) -> Self {
@@ -86,6 +90,7 @@ impl BotContext {
             current_user,
             conn,
             chat_id,
+            request_message: request_message.to_string(),
             timestamp: NaiveDateTime::from_timestamp(timestamp as i64, 0),
             keyboards,
         }
@@ -100,52 +105,47 @@ impl BotContext {
             }
             RequestType::ShowDamage => format!(
                 "Dein derzeitiger Deckel beträgt {}€.",
-                self.get_damage_as_euros()
+                self.money_in_eur(self.get_damage())
             ),
             RequestType::BillPlease => format!(
                 "💶 Deine derzeitiger Schaden beträgt {}€. 💶\nMöchtest du wirklich zahlen?",
-                self.get_damage_as_euros()
+                self.money_in_eur(self.get_damage())
             ),
             RequestType::PayNo => "Ok, dann lass uns lieber weiter trinken.".to_string(),
             RequestType::PayYes => {
                 self.pay();
                 format!(
                 "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
-                self.get_damage_as_euros())
+                self.money_in_eur(self.current_user.last_total.0))
             }
             RequestType::DeletePlease => {
-                "Möchtest du deine gesammelten Daten wirklich löschen?".to_string()
+                "Möchtest du deine Userdaten wirklich löschen?".to_string()
             }
             RequestType::DeleteNo => "Ok, deine Daten wurden nicht gelöscht.".to_string(),
-            RequestType::DeleteYes => "No problemo. Ich habe deine Daten gelöscht.".to_string(),
+            RequestType::DeleteYes => {
+                self.delete_user();
+                "No problemo. Ich habe deine Daten gelöscht.".to_string()
+            }
+            RequestType::Steal => {
+                self.erase_drinks();
+                "Ich habe deinen Deckel unauffällig zerrissen.".to_string()
+            }
             RequestType::Options => "Was kann ich für dich tun?".to_string(),
             RequestType::ChangePrice => "Wähle einen neuen Getränkepreis.".to_string(),
-            RequestType::SmallPrice => format!(
-                "Alles klar, deine Getränk kostet jetzt {}",
-                self.keyboards.price.get(&RequestType::SmallPrice).unwrap()[0]
-            ),
-            RequestType::MiddlePrice => format!(
-                "Alles klar, deine Getränk kostet jetzt {}",
-                self.keyboards.price.get(&RequestType::MiddlePrice).unwrap()[0]
-            ),
-            RequestType::HighPrice => format!(
-                "Alles klar, deine Getränk kostet jetzt {}",
-                self.keyboards.price.get(&RequestType::HighPrice).unwrap()[0]
-            ),
-            RequestType::PremiumPrice => format!(
-                "Alles klar, deine Getränk kostet jetzt {}",
-                self.keyboards
-                    .price
-                    .get(&RequestType::PremiumPrice)
-                    .unwrap()[0]
-            ),
+            RequestType::NewPrice => {
+                self.update_price();
+                format!(
+                    "Alles klar, jedes Getränk kostet jetzt {}",
+                    self.request_message
+                )
+            }
             RequestType::ShowLast => format!(
                 "Deine letzte Spende betrug {}€.",
-                self.current_user.last_total.0
+                self.money_in_eur(self.current_user.last_total.0)
             ),
             RequestType::ShowTotal => format!(
                 "Insgesamt hast du {}€ gespendet.",
-                self.current_user.total.0
+                self.money_in_eur(self.current_user.total.0)
             ),
             RequestType::ShowTotalAll => format!(
                 "Zusammen haben wir {}€ gespendet.",
@@ -173,8 +173,15 @@ impl BotContext {
         drinks as i64 * price
     }
 
-    fn get_damage_as_euros(&self) -> f32 {
-        self.get_damage() as f32 / 100.00
+    fn money_in_eur(&self, money: i64) -> f32 {
+        money as f32 / 100.00
+    }
+
+    fn update_price(&mut self) {
+        // TODO: PARSING ERRORS
+        let new_price = self.request_message.replace("€", "").replace(",", "");
+        self.current_user.price = PgMoney(new_price.parse::<i64>().unwrap());
+        db::update_user(&self.current_user, &self.conn);
     }
 
     fn pay(&mut self) {
@@ -184,6 +191,16 @@ impl BotContext {
         self.current_user.total = self.current_user.total + new_last_total;
         self.current_user.drink_count = 0;
         db::update_user(&self.current_user, &self.conn);
+    }
+
+    fn erase_drinks(&mut self) {
+        self.current_user.drink_count = 0;
+        self.current_user.total = PgMoney(0);
+        db::update_user(&self.current_user, &self.conn);
+    }
+
+    fn delete_user(&self) {
+        db::delete_user(&self.current_user, &self.conn);
     }
 
     fn get_request_type(&self, message: &telegram_types::Message) -> RequestType {
@@ -211,6 +228,13 @@ impl BotContext {
             RequestType::ChangePrice => keyboard_factory(&self.keyboards.price),
             _ => keyboard_factory(&self.keyboards.main),
         }
+    }
+}
+
+fn get_text_from_message(telegram_message: &telegram_types::Message) -> String {
+    match &telegram_message.text {
+        Some(text) => text.to_string(),
+        None => "".to_string(),
     }
 }
 
