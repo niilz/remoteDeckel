@@ -6,5 +6,6 @@ table! {
         price -> Money,
         last_paid -> Timestamp,
         last_total -> Money,
+        total -> Money,
     }
 }

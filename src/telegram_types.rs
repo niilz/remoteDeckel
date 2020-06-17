@@ -6,16 +6,17 @@ pub struct Update {
     pub message: Option<Message>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Message {
     pub message_id: i32,
-    pub from: Option<User>,
     pub date: i32,
     pub chat: Chat,
+    pub from: Option<User>,
     pub text: Option<String>,
+    pub sticker: Option<Sticker>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct User {
     pub id: i32,
     pub is_bot: bool,
@@ -25,7 +26,7 @@ pub struct User {
     pub language_code: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Chat {
     pub id: i32,
     #[serde(rename = "type")]
@@ -34,6 +35,16 @@ pub struct Chat {
     pub username: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Sticker {
+    pub file_id: String,
+    pub file_unique_id: String,
+    pub width: i32,
+    pub height: i32,
+    pub is_animated: bool,
+    pub emoji: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -75,19 +86,6 @@ impl ResponseMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ReplyKeyboardMarkup {
-    keyboard: Vec<Vec<String>>,
-    resize_keyboard: bool,
-}
-impl Default for ReplyKeyboardMarkup {
-    fn default() -> Self {
-        let keyboard = vec![
-            vec!["🍺 Bring mir ein Bier! 🍺".to_string()],
-            vec!["😬 Was is mein Schaden? 😬".to_string()],
-            vec!["🙈 Augen zu und zahlen. 💶".to_string()],
-        ];
-        ReplyKeyboardMarkup {
-            keyboard,
-            resize_keyboard: false,
-        }
-    }
+    pub keyboard: Vec<Vec<String>>,
+    pub resize_keyboard: bool,
 }

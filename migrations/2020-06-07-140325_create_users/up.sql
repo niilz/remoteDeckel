@@ -11,5 +11,6 @@ CREATE TABLE users (
   drink_count SMALLINT NOT NULL default 0,
   price MONEY NOT NULL default 0.5,
   last_paid TIMESTAMP NOT NULL default CURRENT_TIMESTAMP,
-  last_total MONEY NOT NULL default 0.0
+  last_total MONEY NOT NULL default 0.0,
+  total MONEY NOT NULL default 0.0
 )

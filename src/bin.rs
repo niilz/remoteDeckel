@@ -4,8 +4,11 @@
 #[macro_use]
 extern crate rocket;
 
+use bot_lib::bot_types::{Keyboards, RequestType};
 use bot_lib::telegram_types::{self, ReplyKeyboardMarkup, ResponseMessage, Update};
-use bot_lib::{db, messages, models};
+use bot_lib::{bot_types::keyboard_factory, db, messages, models};
+use chrono::NaiveDateTime;
+use diesel::data_types::{PgMoney, PgTimestamp};
 use dotenv::dotenv;
 use reqwest;
 use rocket::response::content;
@@ -15,61 +18,6 @@ use serde_json;
 use serde_yaml;
 use std::collections::BTreeMap;
 use tokio;
-
-struct BotContext {
-    current_user: models::User,
-    conn: db::UserDbConn,
-    chat_id: i32,
-}
-impl BotContext {
-    fn new(current_user: models::User, conn: db::UserDbConn, chat_id: i32) -> Self {
-        BotContext {
-            current_user,
-            conn,
-            chat_id,
-        }
-    }
-
-    fn handle_request(&self, request_type: RequestType) -> serde_json::Result<String> {
-        let response_text = match request_type {
-            RequestType::Start => messages::WELCOME_MESSAGE.to_string(),
-            RequestType::Order => {
-                self.order_drink();
-                "👍 Ich schreib's auf deinen Deckel.".to_string()
-            }
-            RequestType::ShowDamage => {
-                format!("Dein derzeitiger Deckel beträgt {},-€.", self.get_damage())
-            }
-            RequestType::Pay => format!(
-                "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
-                self.get_damage()
-            ),
-            RequestType::Unknown => "Ehm, sorry darauf weiß ich grade keine Antwort...".to_string(),
-        };
-        let method = "sendMessage".to_string();
-        let response_message = ResponseMessage::new(method, self.chat_id, response_text);
-        let response_message = response_message.keyboard(ReplyKeyboardMarkup::default());
-        serde_json::to_string(&response_message)
-    }
-
-    fn order_drink(&self) {
-        db::increase_order(1, &self.conn);
-    }
-
-    fn get_damage(&self) -> f32 {
-        let drinks = self.current_user.drink_count;
-        let price = self.current_user.price.0;
-        (drinks as i64 * price) as f32 / 100.00
-    }
-}
-
-enum RequestType {
-    Start,
-    Order,
-    ShowDamage,
-    Pay,
-    Unknown,
-}
 
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
@@ -87,31 +35,16 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
         Err(_) => persist_new_user(&telegram_user, &conn),
     };
     let chat_id = incoming_message.chat.id;
-    let bot_context = BotContext::new(current_user, conn, chat_id);
-    let request_type = get_request_type(&incoming_message);
+    let timestamp = incoming_message.date;
+    let keyboards = Keyboards::init();
+    let mut bot_context = BotContext::new(current_user, conn, chat_id, timestamp, keyboards);
+    let request_type = bot_context.get_request_type(&incoming_message);
 
     let json_response = match bot_context.handle_request(request_type) {
         Ok(json) => json,
         Err(e) => panic!("{}", e),
     };
     content::Json(json_response)
-}
-
-fn get_request_type(message: &telegram_types::Message) -> RequestType {
-    let request_message = match &message.text {
-        Some(text) => text.to_lowercase().to_string(),
-        None => panic!("No text in Message!"),
-    };
-    if request_message == "/start" {
-        return RequestType::Start;
-    } else if request_message.contains("bier") {
-        return RequestType::Order;
-    } else if request_message.contains("schaden") {
-        return RequestType::ShowDamage;
-    } else if request_message.contains("zahlen") {
-        return RequestType::Pay;
-    }
-    RequestType::Unknown
 }
 
 fn get_user_from_db(
@@ -133,24 +66,174 @@ fn persist_new_user(telegram_user: &telegram_types::User, conn: &db::UserDbConn)
     db::save_user(telegram_user, conn)
 }
 
+struct BotContext {
+    current_user: models::User,
+    conn: db::UserDbConn,
+    chat_id: i32,
+    timestamp: NaiveDateTime,
+    keyboards: Keyboards,
+}
+
+impl BotContext {
+    fn new(
+        current_user: models::User,
+        conn: db::UserDbConn,
+        chat_id: i32,
+        timestamp: i32,
+        keyboards: Keyboards,
+    ) -> Self {
+        BotContext {
+            current_user,
+            conn,
+            chat_id,
+            timestamp: NaiveDateTime::from_timestamp(timestamp as i64, 0),
+            keyboards,
+        }
+    }
+
+    fn handle_request(&mut self, request_type: RequestType) -> serde_json::Result<String> {
+        let response_text = match request_type {
+            RequestType::Start => messages::WELCOME_MESSAGE.to_string(),
+            RequestType::Order => {
+                self.order_drink();
+                "👍 Ich schreib's auf deinen Deckel.".to_string()
+            }
+            RequestType::ShowDamage => format!(
+                "Dein derzeitiger Deckel beträgt {}€.",
+                self.get_damage_as_euros()
+            ),
+            RequestType::BillPlease => format!(
+                "💶 Deine derzeitiger Schaden beträgt {}€. 💶\nMöchtest du wirklich zahlen?",
+                self.get_damage_as_euros()
+            ),
+            RequestType::PayNo => "Ok, dann lass uns lieber weiter trinken.".to_string(),
+            RequestType::PayYes => {
+                self.pay();
+                format!(
+                "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
+                self.get_damage_as_euros())
+            }
+            RequestType::DeletePlease => {
+                "Möchtest du deine gesammelten Daten wirklich löschen?".to_string()
+            }
+            RequestType::DeleteNo => "Ok, deine Daten wurden nicht gelöscht.".to_string(),
+            RequestType::DeleteYes => "No problemo. Ich habe deine Daten gelöscht.".to_string(),
+            RequestType::Options => "Was kann ich für dich tun?".to_string(),
+            RequestType::ChangePrice => "Wähle einen neuen Getränkepreis.".to_string(),
+            RequestType::SmallPrice => format!(
+                "Alles klar, deine Getränk kostet jetzt {}",
+                self.keyboards.price.get(&RequestType::SmallPrice).unwrap()[0]
+            ),
+            RequestType::MiddlePrice => format!(
+                "Alles klar, deine Getränk kostet jetzt {}",
+                self.keyboards.price.get(&RequestType::MiddlePrice).unwrap()[0]
+            ),
+            RequestType::HighPrice => format!(
+                "Alles klar, deine Getränk kostet jetzt {}",
+                self.keyboards.price.get(&RequestType::HighPrice).unwrap()[0]
+            ),
+            RequestType::PremiumPrice => format!(
+                "Alles klar, deine Getränk kostet jetzt {}",
+                self.keyboards
+                    .price
+                    .get(&RequestType::PremiumPrice)
+                    .unwrap()[0]
+            ),
+            RequestType::ShowLast => format!(
+                "Deine letzte Spende betrug {}€.",
+                self.current_user.last_total.0
+            ),
+            RequestType::ShowTotal => format!(
+                "Insgesamt hast du {}€ gespendet.",
+                self.current_user.total.0
+            ),
+            RequestType::ShowTotalAll => format!(
+                "Zusammen haben wir {}€ gespendet.",
+                db::get_total_all(&self.conn)
+            ),
+            RequestType::Unknown => {
+                "🤷 Ehm, sorry darauf weiß ich grade keine Antwort...".to_string()
+            }
+        };
+        let method = "sendMessage".to_string();
+        let response_message = ResponseMessage::new(method, self.chat_id, response_text);
+        let keyboard = self.provide_keyboard(request_type);
+        let response_message = response_message.keyboard(keyboard);
+        serde_json::to_string(&response_message)
+    }
+
+    fn order_drink(&mut self) {
+        self.current_user.drink_count += 1;
+        db::update_user(&self.current_user, &self.conn);
+    }
+
+    fn get_damage(&self) -> i64 {
+        let drinks = self.current_user.drink_count;
+        let price = self.current_user.price.0;
+        drinks as i64 * price
+    }
+
+    fn get_damage_as_euros(&self) -> f32 {
+        self.get_damage() as f32 / 100.00
+    }
+
+    fn pay(&mut self) {
+        self.current_user.last_paid = PgTimestamp(self.timestamp.timestamp());
+        let new_last_total = PgMoney(self.get_damage());
+        self.current_user.last_total = new_last_total;
+        self.current_user.total = self.current_user.total + new_last_total;
+        self.current_user.drink_count = 0;
+        db::update_user(&self.current_user, &self.conn);
+    }
+
+    fn get_request_type(&self, message: &telegram_types::Message) -> RequestType {
+        let request_message = match &message.text {
+            Some(text) => text.to_string(),
+            None => match &message.sticker {
+                Some(sticker) => match &sticker.emoji {
+                    Some(emoji) => emoji.to_string(),
+                    None => return RequestType::Unknown,
+                },
+                None => return RequestType::Unknown,
+            },
+        };
+        if request_message == "/start" {
+            return RequestType::Start;
+        }
+        self.keyboards.get_request_type(&request_message)
+    }
+
+    fn provide_keyboard(&self, request_type: RequestType) -> ReplyKeyboardMarkup {
+        match request_type {
+            RequestType::BillPlease => keyboard_factory(&self.keyboards.pay),
+            RequestType::DeletePlease => keyboard_factory(&self.keyboards.delete),
+            RequestType::Options => keyboard_factory(&self.keyboards.options),
+            RequestType::ChangePrice => keyboard_factory(&self.keyboards.price),
+            _ => keyboard_factory(&self.keyboards.main),
+        }
+    }
+}
+
 fn bot_method_url(method: &str, api_key: &str) -> String {
     let telegram_base_url = "https://api.telegram.org/bot";
     format!("{}{}/{}", telegram_base_url, api_key, method)
 }
 
-#[tokio::main]
-async fn main() -> reqwest::Result<()> {
-    // Set env-variables (port and postgres-db)
-    dotenv().ok();
-    // Get api_key from config-file
-    let config_yml = std::fs::File::open("../config.yml").expect("Could not read config.yml");
-    let config_yml: BTreeMap<String, String> =
-        serde_yaml::from_reader(config_yml).expect("Could not convert yml to serde_yaml");
-    let api_key = config_yml.get("apikey").unwrap();
+fn get_ngrok_url_arg() -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    match args.len() {
+        3 if args[1] == "u" => Some(args[2].to_string()),
+        _ => None,
+    }
+}
 
+fn get_config() -> BTreeMap<String, String> {
+    let config_yml = std::fs::File::open("config.yml").expect("Could not read config.yml");
+    serde_yaml::from_reader(config_yml).expect("Could not convert yml to serde_yaml")
+}
+
+async fn set_webhook(bot_base_url: &str, api_key: &str) -> reqwest::Result<()> {
     // Register update webHook with Telegram
-    // TODO: Automate ngrok setup, or actually host it
-    let bot_base_url = "https://5919eabb94f6.ngrok.io";
     let telegram_set_webhook_url = format!(
         "{}?url={}",
         bot_method_url("setWebhook", api_key),
@@ -160,7 +243,7 @@ async fn main() -> reqwest::Result<()> {
         "Tries to register webHook with GET to: {}",
         telegram_set_webhook_url
     );
-    // eprintln!("Webhook setup disabled");
+
     let webhook_response = reqwest::get(&telegram_set_webhook_url)
         .await?
         .text()
@@ -172,11 +255,33 @@ async fn main() -> reqwest::Result<()> {
         .text()
         .await?;
     println!("Webhook-Info: {:?}", webhook_info);
+    Ok(())
+}
 
-    // Setup routes
+fn launch_rocket() {
     rocket::ignite()
         .mount("/", routes![handle_update])
         .attach(db::UserDbConn::fairing())
         .launch();
+}
+
+#[tokio::main]
+async fn main() -> reqwest::Result<()> {
+    // Set env-variables (port and postgres-db)
+    dotenv().ok();
+
+    let config_yml = get_config();
+    let api_key = config_yml.get("apikey").unwrap();
+    let ngrok_url = match get_ngrok_url_arg() {
+        Some(url) => url,
+        None => config_yml.get("ngrokurl").unwrap().to_string(),
+    };
+    if ngrok_url.contains("NOT_CONFIGURED") {
+        eprintln!("Webhook setup disabled");
+    } else {
+        set_webhook(&ngrok_url, api_key).await?;
+    }
+
+    launch_rocket();
     Ok(())
 }
