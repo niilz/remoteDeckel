@@ -3,6 +3,8 @@
 
 #[macro_use]
 extern crate rocket;
+#[macro_use]
+extern crate diesel_migrations;
 
 use bot_lib::bot_types::{Keyboards, RequestType};
 use bot_lib::telegram_types::{self, ReplyKeyboardMarkup, ResponseMessage, Update};
@@ -11,17 +13,19 @@ use chrono::NaiveDateTime;
 use diesel::data_types::{PgMoney, PgTimestamp};
 use dotenv::dotenv;
 use reqwest;
+use rocket::fairing::AdHoc;
 use rocket::response::content;
-use rocket::{post, routes};
+use rocket::{post, routes, Rocket};
 use rocket_contrib::json::Json;
 use serde_json;
 use serde_yaml;
 use std::collections::BTreeMap;
 use tokio;
 
+embed_migrations!();
+
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
-    println!("Incoming-Update: {:?}", update);
     let incoming_message = match &update.message {
         Some(message) => message,
         None => panic!("No message?...TODO: http 500 response"),
@@ -53,18 +57,10 @@ fn get_user_from_db(
     telegram_user: &telegram_types::User,
     conn: &db::UserDbConn,
 ) -> Result<models::User, diesel::result::Error> {
-    println!(
-        "Tries to get user: {}, with id: {} from db.",
-        telegram_user.first_name, telegram_user.id
-    );
     db::get_user_by_id(telegram_user.id, conn)
 }
 
 fn persist_new_user(telegram_user: &telegram_types::User, conn: &db::UserDbConn) -> models::User {
-    println!(
-        "Saves user: {}, with id: {} to db.",
-        telegram_user.first_name, telegram_user.id
-    );
     db::save_user(telegram_user, conn)
 }
 
@@ -308,7 +304,22 @@ fn launch_rocket() {
     rocket::ignite()
         .mount("/", routes![handle_update])
         .attach(db::UserDbConn::fairing())
+        .attach(AdHoc::on_attach("Database Migration", run_db_migrations))
         .launch();
+}
+
+// see: https://stackoverflow.com/questions/61047355/how-to-run-diesel-migration-with-rocket-in-production
+// and: https://docs.rs/crate/diesel_migrations/1.4.0
+fn run_db_migrations(rocket: Rocket) -> Result<Rocket, Rocket> {
+    let conn =
+        db::UserDbConn::get_one(&rocket).expect("Could not establish rocket with DB connection");
+    match embedded_migrations::run(&*conn) {
+        Ok(()) => Ok(rocket),
+        Err(e) => {
+            eprintln!("Failed to run db migration: {:?}", e);
+            Err(rocket)
+        }
+    }
 }
 
 #[tokio::main]
@@ -316,18 +327,21 @@ async fn main() -> reqwest::Result<()> {
     // Set env-variables (port and postgres-db)
     dotenv().ok();
 
-    let config_yml = get_config();
-    let api_key = config_yml.get("apikey").unwrap();
-    let ngrok_url = match get_ngrok_url_arg() {
-        Some(url) => url,
-        None => config_yml.get("ngrokurl").unwrap().to_string(),
-    };
-    if ngrok_url.contains("NOT_CONFIGURED") {
-        eprintln!("Webhook setup disabled");
-    } else {
-        set_webhook(&ngrok_url, api_key).await?;
-    }
+    let api_key = std::env::var("API_KEY").unwrap();
+    let hosting_url = std::env::var("HOSTING_URL").unwrap();
+    // let config_yml = get_config();
+    // let api_key = config_yml.get("apikey").unwrap();
+    // let hosting_url = match get_ngrok_url_arg() {
+    //     Some(url) => url,
+    //     None => config_yml.get("hostingurl").unwrap().to_string(),
+    // };
+    // if hosting_url.contains("NOT_CONFIGURED") {
+    //     eprintln!("Webhook setup disabled");
+    // } else {
+    //     set_webhook(&hosting_url, api_key).await?;
+    // }
 
+    set_webhook(&hosting_url, &api_key).await?;
     launch_rocket();
     Ok(())
 }

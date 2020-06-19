@@ -1,6 +1,5 @@
 use crate::bot_types::RequestType::*;
 use crate::telegram_types::ReplyKeyboardMarkup;
-use std::collections::HashMap;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RequestType {

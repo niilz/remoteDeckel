@@ -1,8 +1,7 @@
 use crate::models;
-use crate::schema::users::dsl::{drink_count, name, price, total, users};
+use crate::schema::users::dsl::{drink_count, name, total, users};
 use crate::telegram_types;
 use diesel::data_types::PgMoney;
-use diesel::dsl::sum;
 use diesel::prelude::*;
 use rocket_contrib::databases::diesel::PgConnection;
 
