@@ -104,11 +104,13 @@ impl BotContext {
                 "👍 Ich schreib's auf deinen Deckel.".to_string()
             }
             RequestType::ShowDamage => format!(
-                "Dein derzeitiger Deckel beträgt {}€.",
+                "Du hast bisher {} Biers bestellt.\nBeim aktuellen Preis von {:.2}€ beträgt dein derzeitiger Deckel insgesamt {:.2}€.",
+                self.current_user.drink_count,
+                self.money_in_eur(self.current_user.price.0),
                 self.money_in_eur(self.get_damage())
             ),
             RequestType::BillPlease => format!(
-                "💶 Deine derzeitiger Schaden beträgt {}€. 💶\nMöchtest du wirklich zahlen?",
+                "💶 Dein derzeitiger Schaden beträgt {:.2}€. 💶\nMöchtest du wirklich zahlen?",
                 self.money_in_eur(self.get_damage())
             ),
             RequestType::PayNo => "Ok, dann lass uns lieber weiter trinken.".to_string(),
@@ -133,22 +135,29 @@ impl BotContext {
             RequestType::Options => "Was kann ich für dich tun?".to_string(),
             RequestType::ChangePrice => "Wähle einen neuen Getränkepreis.".to_string(),
             RequestType::NewPrice => {
-                self.update_price();
-                format!(
-                    "Alles klar, jedes Getränk kostet jetzt {}",
-                    self.request_message
-                )
+                let new_price = self.convert_price();
+                match new_price {
+                    Ok(price) if price <= 200 => {
+                        self.update_price(price);
+                        format!(
+                            "Alles klar, jedes Getränk kostet jetzt {:.2}€",
+                            self.money_in_eur(self.current_user.price.0)
+                        )
+                    }
+                    _ => "🥁 Sorry aber das ist hier kein Wunschkonzert 🥁".to_string(),
+                }
             }
             RequestType::ShowLast => format!(
-                "Deine letzte Spende betrug {}€.",
+                "Deine letzte Spende war am {:?} und betrug {:.2}€.",
+                self.get_last_paid_as_date(),
                 self.money_in_eur(self.current_user.last_total.0)
             ),
             RequestType::ShowTotal => format!(
-                "Insgesamt hast du {}€ gespendet.",
+                "Insgesamt hast du {:.2}€ gespendet.",
                 self.money_in_eur(self.current_user.total.0)
             ),
             RequestType::ShowTotalAll => format!(
-                "Zusammen haben wir {}€ gespendet.",
+                "Zusammen haben wir {:.2}€ gespendet.",
                 db::get_total_all(&self.conn)
             ),
             RequestType::Unknown => {
@@ -177,10 +186,18 @@ impl BotContext {
         money as f32 / 100.00
     }
 
-    fn update_price(&mut self) {
-        // TODO: PARSING ERRORS
+    fn convert_price(&self) -> Result<i64, std::num::ParseIntError> {
         let new_price = self.request_message.replace("€", "").replace(",", "");
-        self.current_user.price = PgMoney(new_price.parse::<i64>().unwrap());
+        let new_price = if &new_price[..1] == "0" {
+            new_price[1..].to_string()
+        } else {
+            new_price
+        };
+        new_price.parse::<i64>()
+    }
+
+    fn update_price(&mut self, new_price: i64) {
+        self.current_user.price = PgMoney(new_price);
         db::update_user(&self.current_user, &self.conn);
     }
 
@@ -197,6 +214,11 @@ impl BotContext {
         self.current_user.drink_count = 0;
         self.current_user.total = PgMoney(0);
         db::update_user(&self.current_user, &self.conn);
+    }
+
+    fn get_last_paid_as_date(&self) -> String {
+        let date_time = NaiveDateTime::from_timestamp(self.current_user.last_paid.0, 0);
+        date_time.format("%d.%m.%Y um %H:%Mh").to_string()
     }
 
     fn delete_user(&self) {

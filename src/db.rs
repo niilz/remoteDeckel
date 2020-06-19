@@ -1,6 +1,7 @@
 use crate::models;
-use crate::schema::users::dsl::{drink_count, name, total, users};
+use crate::schema::users::dsl::{drink_count, name, price, total, users};
 use crate::telegram_types;
+use diesel::data_types::PgMoney;
 use diesel::dsl::sum;
 use diesel::prelude::*;
 use rocket_contrib::databases::diesel::PgConnection;
@@ -58,12 +59,12 @@ pub fn delete_user(user: &models::User, conn: &PgConnection) -> usize {
     deleted_count
 }
 
-pub fn get_total_all(conn: &PgConnection) -> i32 {
-    42
-    // users
-    //     .select(sum(drink_count))
-    //     .first(conn)
-    //     .expect("Could not sum the total of all users")
+pub fn get_total_all(conn: &PgConnection) -> i64 {
+    let all_totals = users
+        .select(total)
+        .load::<PgMoney>(conn)
+        .expect("Could not sum the total of all users");
+    all_totals.iter().map(|money| money.0).sum()
 }
 
 pub fn show(conn: &PgConnection) {

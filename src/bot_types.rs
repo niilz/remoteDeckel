@@ -56,9 +56,9 @@ impl Keyboards {
 
         let mut price = Vec::new();
         price.push((NewPrice, "0,50€".to_string()));
-        price.push((NewPrice, "1.00€".to_string()));
-        price.push((NewPrice, "1.50€".to_string()));
-        price.push((NewPrice, "2.00€".to_string()));
+        price.push((NewPrice, "1,00€".to_string()));
+        price.push((NewPrice, "1,50€".to_string()));
+        price.push((NewPrice, "2,00€".to_string()));
 
         Keyboards {
             main,
