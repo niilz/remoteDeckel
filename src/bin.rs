@@ -36,7 +36,14 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
     };
     let current_user = match get_user_from_db(&telegram_user, &conn) {
         Ok(user) => user,
-        Err(_) => persist_new_user(&telegram_user, &conn),
+        Err(_) => {
+            let new_user = persist_new_user(&telegram_user, &conn);
+            println!(
+                "New user: {} with id: {} has been created",
+                new_user.name, new_user.id
+            );
+            new_user
+        }
     };
     let chat_id = incoming_message.chat.id;
     let user_text = get_text_from_message(&incoming_message);
@@ -61,6 +68,7 @@ fn get_user_from_db(
 }
 
 fn persist_new_user(telegram_user: &telegram_types::User, conn: &db::UserDbConn) -> models::User {
+    // Delete old webHook if it exists
     db::save_user(telegram_user, conn)
 }
 
@@ -121,7 +129,9 @@ impl BotContext {
             }
             RequestType::DeleteNo => "Ok, deine Daten wurden nicht gelöscht.".to_string(),
             RequestType::DeleteYes => {
-                self.delete_user();
+                let deleted_user = self.delete_user();
+                // TODO: delete returns count not deleted_user
+                println!("User: {} with id: {} has been deleted", deleted_user, deleted_user);
                 "No problemo. Ich habe deine Daten gelöscht.".to_string()
             }
             RequestType::Steal => {
@@ -217,8 +227,8 @@ impl BotContext {
         date_time.format("%d.%m.%Y um %H:%Mh").to_string()
     }
 
-    fn delete_user(&self) {
-        db::delete_user(&self.current_user, &self.conn);
+    fn delete_user(&self) -> usize {
+        db::delete_user(&self.current_user, &self.conn)
     }
 
     fn get_request_type(&self, message: &telegram_types::Message) -> RequestType {
@@ -327,21 +337,16 @@ async fn main() -> reqwest::Result<()> {
     // Set env-variables (port and postgres-db)
     dotenv().ok();
 
-    let api_key = std::env::var("API_KEY").unwrap();
-    let hosting_url = std::env::var("HOSTING_URL").unwrap();
-    // let config_yml = get_config();
-    // let api_key = config_yml.get("apikey").unwrap();
-    // let hosting_url = match get_ngrok_url_arg() {
-    //     Some(url) => url,
-    //     None => config_yml.get("hostingurl").unwrap().to_string(),
-    // };
-    // if hosting_url.contains("NOT_CONFIGURED") {
-    //     eprintln!("Webhook setup disabled");
-    // } else {
-    //     set_webhook(&hosting_url, api_key).await?;
-    // }
+    let api_key = std::env::var("API_KEY");
+    let hosting_url = match get_ngrok_url_arg() {
+        Some(url) => Ok(url),
+        None => std::env::var("HOSTING_URL"),
+    };
+    match (&hosting_url, &api_key) {
+        (Ok(url), Ok(key)) => set_webhook(url, key).await?,
+        _ => eprintln!("Webhook setup disabled"),
+    }
 
-    set_webhook(&hosting_url, &api_key).await?;
     launch_rocket();
     Ok(())
 }
