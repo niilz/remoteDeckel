@@ -22,7 +22,7 @@ use serde_yaml;
 use std::collections::BTreeMap;
 use tokio;
 
-mbed_migrations!();
+embed_migrations!();
 
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
