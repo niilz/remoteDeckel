@@ -22,12 +22,15 @@ use serde_yaml;
 use std::collections::BTreeMap;
 use tokio;
 
-embed_migrations!();
+mbed_migrations!();
 
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
     let incoming_message = match &update.message {
-        Some(message) => message,
+        Some(message) => {
+            println!("{:?}", message);
+            message
+        }
         None => panic!("No message?...TODO: http 500 response"),
     };
     let telegram_user = match &incoming_message.from {
