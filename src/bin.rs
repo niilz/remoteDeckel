@@ -9,7 +9,7 @@ extern crate diesel_migrations;
 use bot_lib::bot_types::{Keyboards, RequestType};
 use bot_lib::telegram_types::{self, ReplyKeyboardMarkup, ResponseMessage, Update};
 use bot_lib::{bot_types::keyboard_factory, db, messages, models};
-use chrono::NaiveDateTime;
+use chrono::{DateTime, TimeZone, Utc};
 use diesel::data_types::{PgMoney, PgTimestamp};
 use dotenv::dotenv;
 use reqwest;
@@ -23,6 +23,11 @@ use std::collections::BTreeMap;
 use tokio;
 
 embed_migrations!();
+#[get("/")]
+fn handle_get() -> String {
+    println!("GET has been called, but is not supported.");
+    "GET is not supported".to_string()
+}
 
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
@@ -47,10 +52,9 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
     };
     let chat_id = incoming_message.chat.id;
     let user_text = get_text_from_message(&incoming_message);
-    let timestamp = incoming_message.date;
+    let date = incoming_message.date;
     let keyboards = Keyboards::init();
-    let mut bot_context =
-        BotContext::new(current_user, conn, chat_id, user_text, timestamp, keyboards);
+    let mut bot_context = BotContext::new(current_user, conn, chat_id, user_text, date, keyboards);
     let request_type = bot_context.get_request_type(&incoming_message);
 
     let json_response = match bot_context.handle_request(request_type) {
@@ -76,7 +80,7 @@ struct BotContext {
     conn: db::UserDbConn,
     chat_id: i32,
     request_message: String,
-    timestamp: NaiveDateTime,
+    date: DateTime<Utc>,
     keyboards: Keyboards,
 }
 
@@ -94,7 +98,7 @@ impl BotContext {
             conn,
             chat_id,
             request_message: request_message.to_string(),
-            timestamp: NaiveDateTime::from_timestamp(timestamp as i64, 0),
+            date: Utc.timestamp(timestamp as i64, 0),
             keyboards,
         }
     }
@@ -213,7 +217,7 @@ impl BotContext {
     }
 
     fn pay(&mut self) {
-        self.current_user.last_paid = PgTimestamp(self.timestamp.timestamp());
+        self.current_user.last_paid = PgTimestamp(self.date.timestamp());
         let new_last_total = PgMoney(self.get_damage());
         self.current_user.last_total = new_last_total;
         self.current_user.total = self.current_user.total + new_last_total;
@@ -228,7 +232,7 @@ impl BotContext {
     }
 
     fn get_last_paid_as_date(&self) -> String {
-        let date_time = NaiveDateTime::from_timestamp(self.current_user.last_paid.0, 0);
+        let date_time = Utc.timestamp(self.current_user.last_paid.0, 0);
         date_time.format("%d.%m.%Y um %H:%Mh").to_string()
     }
 
