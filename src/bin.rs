@@ -18,11 +18,10 @@ use rocket::response::content;
 use rocket::{post, routes, Rocket};
 use rocket_contrib::json::Json;
 use serde_json;
-use serde_yaml;
-use std::collections::BTreeMap;
-use tokio;
 
 embed_migrations!();
+
+static HOUR: i64 = 3600;
 
 #[get("/")]
 fn handle_get() -> String {
@@ -53,9 +52,10 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
     };
     let chat_id = incoming_message.chat.id;
     let user_text = get_text_from_message(&incoming_message);
-    let date = incoming_message.date;
+    let timestamp = incoming_message.date as i64 + (HOUR * 2);
     let keyboards = Keyboards::init();
-    let mut bot_context = BotContext::new(current_user, conn, chat_id, user_text, date, keyboards);
+    let mut bot_context =
+        BotContext::new(current_user, conn, chat_id, user_text, timestamp, keyboards);
     let request_type = bot_context.get_request_type(&incoming_message);
 
     let json_response = match bot_context.handle_request(request_type) {
@@ -91,7 +91,7 @@ impl BotContext {
         conn: db::UserDbConn,
         chat_id: i32,
         request_message: String,
-        timestamp: i32,
+        timestamp: i64,
         keyboards: Keyboards,
     ) -> Self {
         BotContext {
@@ -99,7 +99,7 @@ impl BotContext {
             conn,
             chat_id,
             request_message: request_message.to_string(),
-            date: Utc.timestamp(timestamp as i64, 0),
+            date: Utc.timestamp(timestamp, 0),
             keyboards,
         }
     }
@@ -292,11 +292,6 @@ fn get_ngrok_url_arg() -> Option<String> {
         3 if args[1] == "u" => Some(args[2].to_string()),
         _ => None,
     }
-}
-
-fn get_config() -> BTreeMap<String, String> {
-    let config_yml = std::fs::File::open("config.yml").expect("Could not read config.yml");
-    serde_yaml::from_reader(config_yml).expect("Could not convert yml to serde_yaml")
 }
 
 async fn set_webhook(bot_base_url: &str, api_key: &str) -> reqwest::Result<()> {
