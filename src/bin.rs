@@ -68,7 +68,6 @@ fn get_user_from_db(
 }
 
 fn persist_new_user(telegram_user: &telegram_types::User, conn: &db::UserDbConn) -> models::User {
-    // Delete old webHook if it exists
     db::save_user(telegram_user, conn)
 }
 
