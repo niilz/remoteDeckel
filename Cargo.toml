@@ -1,6 +1,6 @@
 [package]
 name = "deckel-bot"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["nilSinger <niilz@outlook.de>"]
 edition = "2018"
 

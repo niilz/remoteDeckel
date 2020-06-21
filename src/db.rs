@@ -58,12 +58,11 @@ pub fn delete_user(user: &models::User, conn: &PgConnection) -> usize {
     deleted_count
 }
 
-pub fn get_total_all(conn: &PgConnection) -> i64 {
-    let all_totals = users
+pub fn get_total_all(conn: &PgConnection) -> Vec<PgMoney> {
+    users
         .select(total)
         .load::<PgMoney>(conn)
-        .expect("Could not sum the total of all users");
-    all_totals.iter().map(|money| money.0).sum()
+        .expect("Could not sum the total of all users")
 }
 
 pub fn show(conn: &PgConnection) {

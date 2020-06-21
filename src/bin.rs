@@ -27,10 +27,7 @@ embed_migrations!();
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
     let incoming_message = match &update.message {
-        Some(message) => {
-            println!("{:?}", message);
-            message
-        }
+        Some(message) => message,
         None => panic!("No message?...TODO: http 500 response"),
     };
     let telegram_user = match &incoming_message.from {
@@ -156,19 +153,25 @@ impl BotContext {
                     _ => "🥁 Sorry aber das ist hier kein Wunschkonzert 🥁".to_string(),
                 }
             }
-            RequestType::ShowLast => format!(
-                "Deine letzte Spende war am {:?} und betrug {:.2}€.",
-                self.get_last_paid_as_date(),
-                self.money_in_eur(self.current_user.last_total.0)
-            ),
+            RequestType::ShowLast => {
+                let last_paid_amount = self.current_user.last_total.0;
+                match last_paid_amount {
+                    0 => "Du hast bisher noch nicht gespendet.".to_string(),
+                    _ => format!("Deine letzte Spende war am {:?} und betrug {:.2}€.",
+                        self.get_last_paid_as_date(), self.money_in_eur(self.current_user.last_total.0)),
+                }
+            }
             RequestType::ShowTotal => format!(
                 "Insgesamt hast du {:.2}€ gespendet.",
                 self.money_in_eur(self.current_user.total.0)
             ),
-            RequestType::ShowTotalAll => format!(
-                "Zusammen haben wir {:.2}€ gespendet.",
-                db::get_total_all(&self.conn)
-            ),
+            RequestType::ShowTotalAll => {
+                let total_all = self.get_total_all();
+                match total_all {
+                    0 => "Bisher wurde noch nicht gespendet".to_string(),
+                    _ => format!("Zusammen haben wir bisher {:.2}€ gespendet.", self.money_in_eur(total_all)),
+                }
+            }
             RequestType::Unknown => {
                 "🤷 Ehm, sorry darauf weiß ich grade keine Antwort...".to_string()
             }
@@ -228,6 +231,11 @@ impl BotContext {
     fn get_last_paid_as_date(&self) -> String {
         let date_time = NaiveDateTime::from_timestamp(self.current_user.last_paid.0, 0);
         date_time.format("%d.%m.%Y um %H:%Mh").to_string()
+    }
+
+    fn get_total_all(&self) -> i64 {
+        let vec_of_totals = db::get_total_all(&self.conn);
+        vec_of_totals.iter().map(|money| money.0).sum()
     }
 
     fn delete_user(&self) -> usize {
