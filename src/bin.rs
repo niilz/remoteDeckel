@@ -23,6 +23,7 @@ use std::collections::BTreeMap;
 use tokio;
 
 embed_migrations!();
+
 #[get("/")]
 fn handle_get() -> String {
     println!("GET has been called, but is not supported.");
@@ -326,7 +327,7 @@ async fn set_webhook(bot_base_url: &str, api_key: &str) -> reqwest::Result<()> {
 
 fn launch_rocket() {
     rocket::ignite()
-        .mount("/", routes![handle_update])
+        .mount("/", routes![handle_update, handle_get])
         .attach(db::UserDbConn::fairing())
         .attach(AdHoc::on_attach("Database Migration", run_db_migrations))
         .launch();
