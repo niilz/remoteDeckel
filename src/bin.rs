@@ -25,26 +25,28 @@ embed_migrations!();
 
 static HOUR: i64 = 3600;
 
-struct MonitoringRequest(Vec<Vec<String>>);
+struct MonitoringRequest(String);
 
 impl<'a, 'r> FromRequest<'a, 'r> for MonitoringRequest {
-    type Error = ();
+    type Error = String;
     fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
-        let header_value_vec = request
-            .headers()
-            .iter()
-            .map(|header| vec![header.name().to_string(), header.value().to_string()])
-            .collect();
-        Outcome::Success(MonitoringRequest(header_value_vec))
+        // Checks for the clever cloud monitoring header. It's value is "telegraf"
+        let mut maybe_header = request.headers().get("X-Clevercloud-Monitoring");
+        match maybe_header.next() {
+            Some(value) => Outcome::Success(MonitoringRequest(value.to_string())),
+            None => Outcome::Failure((
+                Status::BadRequest,
+                "Only Monitoring-GET-requests are supported".to_string(),
+            )),
+        }
     }
 }
 
 #[get("/")]
 fn handle_get(metrics_request: MonitoringRequest) -> String {
-    for header_value in metrics_request.0.iter() {
-        println!("header: {}, value: {}", header_value[0], header_value[1]);
-    }
-    "Received GET-request".to_string()
+    // Only accepts a request if the clever-cloud-monitoring-header is present
+    // It does nothing with the request but accepting it prevents the log from being cluttered
+    "Received Monitoring GET-Request from clever cloud".to_string()
 }
 
 #[post("/", format = "json", data = "<update>")]
