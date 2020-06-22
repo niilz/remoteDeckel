@@ -14,8 +14,10 @@ use diesel::data_types::{PgMoney, PgTimestamp};
 use dotenv::dotenv;
 use reqwest;
 use rocket::fairing::AdHoc;
+use rocket::http::Status;
+use rocket::request::{self, FromRequest, Request};
 use rocket::response::content;
-use rocket::{post, routes, Rocket};
+use rocket::{post, routes, Outcome, Rocket};
 use rocket_contrib::json::Json;
 use serde_json;
 
@@ -23,10 +25,26 @@ embed_migrations!();
 
 static HOUR: i64 = 3600;
 
+struct MonitoringRequest(Vec<Vec<String>>);
+
+impl<'a, 'r> FromRequest<'a, 'r> for MonitoringRequest {
+    type Error = ();
+    fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
+        let header_value_vec = request
+            .headers()
+            .iter()
+            .map(|header| vec![header.name().to_string(), header.value().to_string()])
+            .collect();
+        Outcome::Success(MonitoringRequest(header_value_vec))
+    }
+}
+
 #[get("/")]
-fn handle_get() -> String {
-    println!("GET has been called, but is not supported.");
-    "GET is not supported".to_string()
+fn handle_get(metrics_request: MonitoringRequest) -> String {
+    for header_value in metrics_request.0.iter() {
+        println!("header: {}, value: {}", header_value[0], header_value[1]);
+    }
+    "Received GET-request".to_string()
 }
 
 #[post("/", format = "json", data = "<update>")]
