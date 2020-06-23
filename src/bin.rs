@@ -248,7 +248,6 @@ impl BotContext {
 
     fn erase_drinks(&mut self) {
         self.current_user.drink_count = 0;
-        self.current_user.total = PgMoney(0);
         db::update_user(&self.current_user, &self.conn);
     }
 
