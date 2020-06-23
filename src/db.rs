@@ -23,19 +23,19 @@ pub fn get_user_by_id(
     users.find(given_id).first(conn)
 }
 
-pub fn increase_drink_count_by_amount(
-    amount: i16,
-    user: &models::User,
-    conn: &PgConnection,
-) -> usize {
-    let updated_count = diesel::update(user)
-        .set(drink_count.eq(drink_count + amount))
-        .execute(conn)
-        .expect("Could not increase order");
-    updated_count
-}
+// pub fn increase_drink_count_by_amount(
+//     amount: i16,
+//     user: models::User,
+//     conn: &PgConnection,
+// ) -> usize {
+//     let updated_count = diesel::update(user)
+//         .set(drink_count.eq(drink_count + amount))
+//         .execute(conn)
+//         .expect("Could not increase order");
+//     updated_count
+// }
 
-pub fn update_user(user: &models::User, conn: &PgConnection) -> usize {
+pub fn update_user(user: models::UpdateUser, conn: &PgConnection) -> usize {
     let updated_count = diesel::update(users)
         .set(user)
         .execute(conn)

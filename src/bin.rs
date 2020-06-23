@@ -7,6 +7,7 @@ extern crate rocket;
 extern crate diesel_migrations;
 
 use bot_lib::bot_types::{Keyboards, RequestType};
+use bot_lib::models::UpdateUser;
 use bot_lib::telegram_types::{self, ReplyKeyboardMarkup, ResponseMessage, Update};
 use bot_lib::{bot_types::keyboard_factory, db, messages, models};
 use chrono::{DateTime, TimeZone, Utc};
@@ -216,8 +217,9 @@ impl BotContext {
     }
 
     fn order_drink(&mut self) {
-        self.current_user.drink_count += 1;
-        db::update_user(&self.current_user, &self.conn);
+        let mut update_user = UpdateUser::from_user(&self.current_user);
+        update_user.drink_count += 1;
+        db::update_user(update_user, &self.conn);
     }
 
     fn get_damage(&self) -> i64 {
@@ -241,22 +243,28 @@ impl BotContext {
     }
 
     fn update_price(&mut self, new_price: i64) {
-        self.current_user.price = PgMoney(new_price);
-        db::update_user(&self.current_user, &self.conn);
+        let mut update_user = UpdateUser::from_user(&self.current_user);
+        update_user.price = PgMoney(new_price);
+        db::update_user(update_user, &self.conn);
     }
 
     fn pay(&mut self) {
-        self.current_user.last_paid = PgTimestamp(self.date.timestamp());
+        let last_paid = PgTimestamp(self.date.timestamp());
         let new_last_total = PgMoney(self.get_damage());
-        self.current_user.last_total = new_last_total;
-        self.current_user.total = self.current_user.total + new_last_total;
-        self.current_user.drink_count = 0;
-        db::update_user(&self.current_user, &self.conn);
+        let total = self.current_user.total + new_last_total;
+        let mut update_user = UpdateUser::from_user(&self.current_user);
+        update_user.last_paid = last_paid;
+        update_user.last_total = new_last_total;
+        update_user.total = new_last_total;
+        update_user.total = total;
+        update_user.drink_count = 0;
+        db::update_user(update_user, &self.conn);
     }
 
     fn erase_drinks(&mut self) {
-        self.current_user.drink_count = 0;
-        db::update_user(&self.current_user, &self.conn);
+        let mut update_user = UpdateUser::from_user(&self.current_user);
+        update_user.drink_count = 0;
+        db::update_user(update_user, &self.conn);
     }
 
     fn get_last_paid_as_date(&self) -> String {
