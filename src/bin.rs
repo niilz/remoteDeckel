@@ -93,7 +93,15 @@ fn get_user_from_db(
 }
 
 fn persist_new_user(telegram_user: &telegram_types::User, conn: &db::UserDbConn) -> models::User {
-    db::save_user(telegram_user, conn)
+    let user_name = match telegram_user.username {
+        Some(ref username) => username,
+        None => "undefined",
+    };
+    let new_user = models::NewUser {
+        id: telegram_user.id,
+        name: &user_name,
+    };
+    db::save_user(new_user, conn)
 }
 
 struct BotContext {

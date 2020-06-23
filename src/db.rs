@@ -8,17 +8,9 @@ use rocket_contrib::databases::diesel::PgConnection;
 #[database("remote_deckel")]
 pub struct UserDbConn(PgConnection);
 
-pub fn save_user(new_user: &telegram_types::User, conn: &PgConnection) -> models::User {
-    let user_name = match new_user.username {
-        Some(ref username) => username,
-        None => "undefined",
-    };
-    let new_user = models::NewUser {
-        id: new_user.id,
-        name: &user_name,
-    };
+pub fn save_user(new_user: models::NewUser, conn: &PgConnection) -> models::User {
     let new_user = diesel::insert_into(users)
-        .values(&new_user)
+        .values(new_user)
         .get_result(conn)
         .expect("Error saving user.");
     new_user
