@@ -40,14 +40,4 @@ impl UpdateUser {
             total: Some(user.last_total),
         }
     }
-    // fn with_drink_count(count: i16) -> UpdateUser {
-    //     let mut update_user = UpdateUser::default();
-    //     update_user.drink_count = Some(count + count);
-    //     update_user
-    // }
-    // fn erase_drinks() -> UpdateUser {
-    //     let mut update_user = UpdateUser::default();
-    //     update_user.drink_count = Some(0);
-    //     update_user
-    // }
 }
