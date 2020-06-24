@@ -44,7 +44,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for MonitoringRequest {
 }
 
 #[get("/")]
-fn handle_get(metrics_request: MonitoringRequest) -> String {
+fn handle_get(_metrics_request: MonitoringRequest) -> String {
     // Only accepts a request if the clever-cloud-monitoring-header is present
     // It does nothing with the request but accepting it prevents the log from being cluttered
     "Received Monitoring GET-Request from clever cloud".to_string()
@@ -218,7 +218,7 @@ impl BotContext {
 
     fn order_drink(&mut self) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.drink_count += 1;
+        update_user.drink_count = Some(self.current_user.drink_count + 1);
         db::update_user(update_user, &self.conn);
     }
 
@@ -244,26 +244,26 @@ impl BotContext {
 
     fn update_price(&mut self, new_price: i64) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.price = PgMoney(new_price);
+        update_user.price = Some(PgMoney(new_price));
         db::update_user(update_user, &self.conn);
     }
 
     fn pay(&mut self) {
-        let last_paid = PgTimestamp(self.date.timestamp());
-        let new_last_total = PgMoney(self.get_damage());
-        let total = self.current_user.total + new_last_total;
-        let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.last_paid = last_paid;
-        update_user.last_total = new_last_total;
-        update_user.total = new_last_total;
-        update_user.total = total;
-        update_user.drink_count = 0;
+        let last_paid = self.date.timestamp();
+        let new_last_total = self.get_damage();
+        let total = self.current_user.total.0 + new_last_total;
+        let mut update_user = UpdateUser::default();
+        update_user.id = self.current_user.id;
+        update_user.last_paid = Some(PgTimestamp(last_paid));
+        update_user.last_total = Some(PgMoney(new_last_total));
+        update_user.total = Some(PgMoney(total));
+        update_user.drink_count = Some(0);
         db::update_user(update_user, &self.conn);
     }
 
     fn erase_drinks(&mut self) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.drink_count = 0;
+        update_user.drink_count = Some(0);
         db::update_user(update_user, &self.conn);
     }
 

@@ -1,6 +1,5 @@
 use crate::models;
-use crate::schema::users::dsl::{drink_count, name, total, users};
-use crate::telegram_types;
+use crate::schema::users::dsl::{name, total, users};
 use diesel::data_types::PgMoney;
 use diesel::prelude::*;
 use rocket_contrib::databases::diesel::PgConnection;
