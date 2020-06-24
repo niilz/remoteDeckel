@@ -156,7 +156,7 @@ impl BotContext {
                 self.pay();
                 format!(
                 "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
-                self.money_in_eur(donation)
+                self.money_in_eur(donation))
             }
             RequestType::DeletePlease => {
                 "Möchtest du deine Userdaten wirklich löschen?".to_string()
