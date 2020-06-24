@@ -219,7 +219,7 @@ impl BotContext {
     fn order_drink(&mut self) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
         update_user.drink_count = Some(self.current_user.drink_count + 1);
-        db::update_user(update_user, &self.conn);
+        db::update_user(&self.current_user, &update_user, &self.conn);
     }
 
     fn get_damage(&self) -> i64 {
@@ -245,7 +245,7 @@ impl BotContext {
     fn update_price(&mut self, new_price: i64) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
         update_user.price = Some(PgMoney(new_price));
-        db::update_user(update_user, &self.conn);
+        db::update_user(&self.current_user, &update_user, &self.conn);
     }
 
     fn pay(&mut self) {
@@ -253,18 +253,17 @@ impl BotContext {
         let new_last_total = self.get_damage();
         let total = self.current_user.total.0 + new_last_total;
         let mut update_user = UpdateUser::default();
-        update_user.id = self.current_user.id;
         update_user.last_paid = Some(PgTimestamp(last_paid));
         update_user.last_total = Some(PgMoney(new_last_total));
         update_user.total = Some(PgMoney(total));
         update_user.drink_count = Some(0);
-        db::update_user(update_user, &self.conn);
+        db::update_user(&self.current_user, &update_user, &self.conn);
     }
 
     fn erase_drinks(&mut self) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
         update_user.drink_count = Some(0);
-        db::update_user(update_user, &self.conn);
+        db::update_user(&self.current_user, &update_user, &self.conn);
     }
 
     fn get_last_paid_as_date(&self) -> String {

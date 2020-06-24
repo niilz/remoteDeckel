@@ -34,9 +34,13 @@ pub fn get_user_by_id(
 //     updated_count
 // }
 
-pub fn update_user(user: models::UpdateUser, conn: &PgConnection) -> usize {
-    let updated_count = diesel::update(users)
-        .set(user)
+pub fn update_user(
+    user: &models::User,
+    update_user: &models::UpdateUser,
+    conn: &PgConnection,
+) -> usize {
+    let updated_count = diesel::update(user)
+        .set(update_user)
         .execute(conn)
         .expect("Could not update user by given UpdateUser");
     updated_count

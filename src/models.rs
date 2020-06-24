@@ -23,7 +23,6 @@ pub struct NewUser<'a> {
 #[derive(Debug, AsChangeset, Default)]
 #[table_name = "users"]
 pub struct UpdateUser {
-    pub id: i32,
     pub drink_count: Option<i16>,
     pub price: Option<PgMoney>,
     pub last_paid: Option<PgTimestamp>,
@@ -34,7 +33,6 @@ pub struct UpdateUser {
 impl UpdateUser {
     pub fn from_user(user: &User) -> UpdateUser {
         UpdateUser {
-            id: user.id,
             drink_count: Some(user.drink_count),
             price: Some(user.price),
             last_paid: Some(user.last_paid),
