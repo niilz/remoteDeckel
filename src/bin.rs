@@ -181,7 +181,7 @@ impl BotContext {
                         self.update_price(price);
                         format!(
                             "Alles klar, jedes Getränk kostet jetzt {:.2}€",
-                            self.money_in_eur(self.current_user.price.0)
+                            self.money_in_eur(price)
                         )
                     }
                     _ => "🥁 Sorry aber das ist hier kein Wunschkonzert 🥁".to_string(),
