@@ -152,10 +152,11 @@ impl BotContext {
             ),
             RequestType::PayNo => "Ok, dann lass uns lieber weiter trinken.".to_string(),
             RequestType::PayYes => {
+                let donation = self.get_damage();
                 self.pay();
                 format!(
                 "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
-                self.money_in_eur(self.current_user.last_total.0))
+                self.money_in_eur(donation)
             }
             RequestType::DeletePlease => {
                 "Möchtest du deine Userdaten wirklich löschen?".to_string()
