@@ -98,9 +98,16 @@ fn persist_new_user(telegram_user: &telegram_types::User, conn: &db::UserDbConn)
         Some(ref username) => username,
         None => "undefined",
     };
+    let first_name = telegram_user.first_name.to_string();
+    let last_name = match telegram_user.last_name {
+        Some(ref last_name) => last_name,
+        None => "undefined",
+    };
     let new_user = models::NewUser {
         id: telegram_user.id,
         name: &user_name,
+        first_name: &first_name,
+        last_name: last_name,
     };
     db::save_user(new_user, conn)
 }

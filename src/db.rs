@@ -1,5 +1,5 @@
 use crate::models;
-use crate::schema::users::dsl::{name, total, users};
+use crate::schema::users::dsl::{total, users};
 use diesel::data_types::PgMoney;
 use diesel::prelude::*;
 use rocket_contrib::databases::diesel::PgConnection;
@@ -21,18 +21,6 @@ pub fn get_user_by_id(
 ) -> Result<models::User, diesel::result::Error> {
     users.find(given_id).first(conn)
 }
-
-// pub fn increase_drink_count_by_amount(
-//     amount: i16,
-//     user: models::User,
-//     conn: &PgConnection,
-// ) -> usize {
-//     let updated_count = diesel::update(user)
-//         .set(drink_count.eq(drink_count + amount))
-//         .execute(conn)
-//         .expect("Could not increase order");
-//     updated_count
-// }
 
 pub fn update_user(
     user: &models::User,
@@ -58,18 +46,4 @@ pub fn get_total_all(conn: &PgConnection) -> Vec<PgMoney> {
         .select(total)
         .load::<PgMoney>(conn)
         .expect("Could not sum the total of all users")
-}
-
-pub fn show(conn: &PgConnection) {
-    let results = users
-        .filter(name.eq("hans"))
-        .limit(10)
-        .load::<models::User>(conn)
-        .expect("Error loading Users");
-    println!("Start Result-Printing");
-    for user in results {
-        println!("{:?}", user.last_paid);
-        println!("{:?}", user.last_total);
-    }
-    println!("Stop Result-Printing");
 }

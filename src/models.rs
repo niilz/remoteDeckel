@@ -6,6 +6,8 @@ use diesel::{Identifiable, Insertable, Queryable};
 pub struct User {
     pub id: i32,
     pub name: String,
+    pub first_name: String,
+    pub last_name: String,
     pub drink_count: i16,
     pub price: PgMoney,
     pub last_paid: PgTimestamp,
@@ -18,6 +20,8 @@ pub struct User {
 pub struct NewUser<'a> {
     pub id: i32,
     pub name: &'a str,
+    pub first_name: &'a str,
+    pub last_name: &'a str,
 }
 
 #[derive(Debug, AsChangeset, Default)]
