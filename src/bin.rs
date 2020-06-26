@@ -1,4 +1,12 @@
-// Version 0.1
+// To choose DB first set ROCKET_ENV (in fish: set -x ROCKET_ENV dev)
+// DBs are configured in rocekt.toml for dev-environment
+//
+// To use http tunnel pass use flag "url" and the tunnel url (cargo run url https://tunnelurl.com)
+//
+// To swap bot and use remoteDeckelTest_bot pass "test" flag
+// - (cargo run test)
+// - or with url (cargo run url https://tunnerlurl.com test)
+//
 #![feature(proc_macro_hygiene, decl_macro)]
 
 #[macro_use]
@@ -335,15 +343,16 @@ fn get_args() -> Vec<String> {
 fn get_ngrok_url() -> Option<String> {
     let args = get_args();
     match args.len() {
-        3 if args[1] == "url" => Some(args[2].to_string()),
+        3 | 4 if args[1] == "url" => Some(args[2].to_string()),
         _ => None,
     }
 }
 
 fn is_test() -> bool {
     let args = get_args();
+    println!("istest: {}", args[3]);
     match args.len() {
-        5 if args[3] == "test" => true,
+        4 if args[3] == "test" => true,
         2 if args[1] == "test" => true,
         _ => false,
     }
@@ -375,51 +384,23 @@ async fn set_webhook(bot_base_url: &str, api_key: &str) -> reqwest::Result<()> {
     Ok(())
 }
 
-fn launch_rocket(is_test: bool) {
-    if is_test {
-        println!("Test-DB is connected with rocket.");
-        rocket::ignite()
-            .mount("/", routes![handle_update, handle_get])
-            .attach(db::UserDbTestConn::fairing())
-            .attach(AdHoc::on_attach(
-                "Production-Database Migration",
-                run_db_migrations,
-            ))
-            .launch();
-    } else {
-        rocket::ignite()
-            .mount("/", routes![handle_update, handle_get])
-            .attach(db::UserDbConn::fairing())
-            .attach(AdHoc::on_attach(
-                "Test-Database Migration",
-                run_test_db_migrations,
-            ))
-            .launch();
-    }
+fn launch_rocket() {
+    rocket::ignite()
+        .mount("/", routes![handle_update, handle_get])
+        .attach(db::UserDbConn::fairing())
+        .attach(AdHoc::on_attach("Database Migration", run_db_migrations))
+        .launch();
 }
 
 // see: https://stackoverflow.com/questions/61047355/how-to-run-diesel-migration-with-rocket-in-production
 // and: https://docs.rs/crate/diesel_migrations/1.4.0
 fn run_db_migrations(rocket: Rocket) -> Result<Rocket, Rocket> {
-    let conn = db::UserDbConn::get_one(&rocket)
-        .expect("Could not establish rocket with Production-DB connection");
+    let conn =
+        db::UserDbConn::get_one(&rocket).expect("Could not establish rocket with DB connection");
     match embedded_migrations::run(&*conn) {
         Ok(()) => Ok(rocket),
         Err(e) => {
-            eprintln!("Failed to run PRODUCTION-DB migration: {:?}", e);
-            Err(rocket)
-        }
-    }
-}
-
-fn run_test_db_migrations(rocket: Rocket) -> Result<Rocket, Rocket> {
-    let conn = db::UserDbTestConn::get_one(&rocket)
-        .expect("Could not establish rocket with Production-DB connection");
-    println!("Embeddes migrations for Test-DB");
-    match embedded_migrations::run(&*conn) {
-        Ok(()) => Ok(rocket),
-        Err(e) => {
-            eprintln!("Failed to run TEST-DB migration: {:?}", e);
+            eprintln!("Failed to run DB migration: {:?}", e);
             Err(rocket)
         }
     }
@@ -430,6 +411,7 @@ async fn main() -> reqwest::Result<()> {
     // Set env-variables (port and postgres-db)
     dotenv().ok();
 
+    println!("isTESTMAIN: {}", is_test());
     let api_key = match is_test() {
         true => std::env::var("API_KEY_TEST"),
         false => std::env::var("API_KEY"),
@@ -443,6 +425,6 @@ async fn main() -> reqwest::Result<()> {
         _ => eprintln!("Webhook setup disabled"),
     }
 
-    launch_rocket(is_test());
+    launch_rocket();
     Ok(())
 }
