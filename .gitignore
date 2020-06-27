@@ -5,3 +5,4 @@ updateJson
 notes*
 rocket.toml
 .clever*
+.DS_Store

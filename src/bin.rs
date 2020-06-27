@@ -14,12 +14,10 @@ extern crate rocket;
 #[macro_use]
 extern crate diesel_migrations;
 
-use bot_lib::bot_types::{Keyboards, RequestType};
-use bot_lib::models::UpdateUser;
-use bot_lib::telegram_types::{self, ReplyKeyboardMarkup, ResponseMessage, Update};
-use bot_lib::{bot_types::keyboard_factory, db, messages, models};
-use chrono::{DateTime, TimeZone, Utc};
-use diesel::data_types::{PgMoney, PgTimestamp};
+use bot_lib::bot_context::BotContext;
+use bot_lib::bot_types::Keyboards;
+use bot_lib::telegram_types::{self, Update};
+use bot_lib::{db, models};
 use dotenv::dotenv;
 use reqwest;
 use rocket::fairing::AdHoc;
@@ -28,7 +26,6 @@ use rocket::request::{self, FromRequest, Request};
 use rocket::response::content;
 use rocket::{post, routes, Outcome, Rocket};
 use rocket_contrib::json::Json;
-use serde_json;
 
 embed_migrations!();
 
@@ -91,6 +88,7 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
         Ok(json) => json,
         Err(e) => panic!("{}", e),
     };
+
     content::Json(json_response)
 }
 
@@ -120,210 +118,6 @@ fn persist_new_user(telegram_user: &telegram_types::User, conn: &db::UserDbConn)
     db::save_user(new_user, conn)
 }
 
-struct BotContext {
-    current_user: models::User,
-    conn: db::UserDbConn,
-    chat_id: i32,
-    request_message: String,
-    date: DateTime<Utc>,
-    keyboards: Keyboards,
-}
-
-impl BotContext {
-    fn new(
-        current_user: models::User,
-        conn: db::UserDbConn,
-        chat_id: i32,
-        request_message: String,
-        timestamp: i64,
-        keyboards: Keyboards,
-    ) -> Self {
-        BotContext {
-            current_user,
-            conn,
-            chat_id,
-            request_message: request_message.to_string(),
-            date: Utc.timestamp(timestamp, 0),
-            keyboards,
-        }
-    }
-
-    fn handle_request(&mut self, request_type: RequestType) -> serde_json::Result<String> {
-        let response_text = match request_type {
-            RequestType::Start => messages::WELCOME_MESSAGE.to_string(),
-            RequestType::Order => {
-                self.order_drink();
-                "👍 Ich schreib's auf deinen Deckel.".to_string()
-            }
-            RequestType::ShowDamage => format!(
-                "Du hast bisher {} Biers bestellt.\nBeim aktuellen Preis von {:.2}€ beträgt dein derzeitiger Deckel insgesamt {:.2}€.",
-                self.current_user.drink_count,
-                self.money_in_eur(self.current_user.price.0),
-                self.money_in_eur(self.get_damage())
-            ),
-            RequestType::BillPlease => format!(
-                "💶 Dein derzeitiger Schaden beträgt {:.2}€. 💶\nMöchtest du wirklich zahlen?",
-                self.money_in_eur(self.get_damage())
-            ),
-            RequestType::PayNo => "Ok, dann lass uns lieber weiter trinken.".to_string(),
-            RequestType::PayYes => {
-                let donation = self.get_damage();
-                self.pay();
-                format!(
-                "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
-                self.money_in_eur(donation))
-            }
-            RequestType::DeletePlease => {
-                "Möchtest du deine Userdaten wirklich löschen?".to_string()
-            }
-            RequestType::DeleteNo => "Ok, deine Daten wurden nicht gelöscht.".to_string(),
-            RequestType::DeleteYes => {
-                let deleted_user = self.delete_user();
-                // TODO: delete returns count not deleted_user
-                println!("User: {} with id: {} has been deleted", deleted_user, deleted_user);
-                "No problemo. Ich habe deine Daten gelöscht.".to_string()
-            }
-            RequestType::Steal => {
-                self.erase_drinks();
-                "Ich habe deinen Deckel unauffällig zerrissen.".to_string()
-            }
-            RequestType::Options => "Was kann ich für dich tun?".to_string(),
-            RequestType::ChangePrice => "Wähle einen neuen Getränkepreis.".to_string(),
-            RequestType::NewPrice => {
-                let new_price = self.convert_price();
-                match new_price {
-                    Ok(price) if price <= 200 => {
-                        self.update_price(price);
-                        format!(
-                            "Alles klar, jedes Getränk kostet jetzt {:.2}€",
-                            self.money_in_eur(price)
-                        )
-                    }
-                    _ => "🥁 Sorry aber das ist hier kein Wunschkonzert 🥁".to_string(),
-                }
-            }
-            RequestType::ShowLast => {
-                let last_paid_amount = self.current_user.last_total.0;
-                match last_paid_amount {
-                    0 => "Du hast bisher noch nicht gespendet.".to_string(),
-                    _ => format!("Deine letzte Spende war am {:?} und betrug {:.2}€.",
-                        self.get_last_paid_as_date(), self.money_in_eur(self.current_user.last_total.0)),
-                }
-            }
-            RequestType::ShowTotal => format!(
-                "Insgesamt hast du {:.2}€ gespendet.",
-                self.money_in_eur(self.current_user.total.0)
-            ),
-            RequestType::ShowTotalAll => {
-                let total_all = self.get_total_all();
-                match total_all {
-                    0 => "Bisher wurde noch nicht gespendet".to_string(),
-                    _ => format!("Zusammen haben wir bisher {:.2}€ gespendet.", self.money_in_eur(total_all)),
-                }
-            }
-            RequestType::Unknown => {
-                "🤷 Ehm, sorry darauf weiß ich grade keine Antwort...".to_string()
-            }
-        };
-        let method = "sendMessage".to_string();
-        let response_message = ResponseMessage::new(method, self.chat_id, response_text);
-        let keyboard = self.provide_keyboard(request_type);
-        let response_message = response_message.keyboard(keyboard);
-        serde_json::to_string(&response_message)
-    }
-
-    fn order_drink(&mut self) {
-        let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.drink_count = Some(self.current_user.drink_count + 1);
-        db::update_user(&self.current_user, &update_user, &self.conn);
-    }
-
-    fn get_damage(&self) -> i64 {
-        let drinks = self.current_user.drink_count;
-        let price = self.current_user.price.0;
-        drinks as i64 * price
-    }
-
-    fn money_in_eur(&self, money: i64) -> f32 {
-        money as f32 / 100.00
-    }
-
-    fn convert_price(&self) -> Result<i64, std::num::ParseIntError> {
-        let new_price = self.request_message.replace("€", "").replace(",", "");
-        let new_price = if &new_price[..1] == "0" {
-            new_price[1..].to_string()
-        } else {
-            new_price
-        };
-        new_price.parse::<i64>()
-    }
-
-    fn update_price(&mut self, new_price: i64) {
-        let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.price = Some(PgMoney(new_price));
-        db::update_user(&self.current_user, &update_user, &self.conn);
-    }
-
-    fn pay(&mut self) {
-        let last_paid = self.date.timestamp();
-        let new_last_total = self.get_damage();
-        let total = self.current_user.total.0 + new_last_total;
-        let mut update_user = UpdateUser::default();
-        update_user.last_paid = Some(PgTimestamp(last_paid));
-        update_user.last_total = Some(PgMoney(new_last_total));
-        update_user.total = Some(PgMoney(total));
-        update_user.drink_count = Some(0);
-        db::update_user(&self.current_user, &update_user, &self.conn);
-    }
-
-    fn erase_drinks(&mut self) {
-        let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.drink_count = Some(0);
-        db::update_user(&self.current_user, &update_user, &self.conn);
-    }
-
-    fn get_last_paid_as_date(&self) -> String {
-        let date_time = Utc.timestamp(self.current_user.last_paid.0, 0);
-        date_time.format("%d.%m.%Y um %H:%Mh").to_string()
-    }
-
-    fn get_total_all(&self) -> i64 {
-        let vec_of_totals = db::get_total_all(&self.conn);
-        vec_of_totals.iter().map(|money| money.0).sum()
-    }
-
-    fn delete_user(&self) -> usize {
-        db::delete_user(&self.current_user, &self.conn)
-    }
-
-    fn get_request_type(&self, message: &telegram_types::Message) -> RequestType {
-        let request_message = match &message.text {
-            Some(text) => text.to_string(),
-            None => match &message.sticker {
-                Some(sticker) => match &sticker.emoji {
-                    Some(emoji) => emoji.to_string(),
-                    None => return RequestType::Unknown,
-                },
-                None => return RequestType::Unknown,
-            },
-        };
-        if request_message == "/start" {
-            return RequestType::Start;
-        }
-        self.keyboards.get_request_type(&request_message)
-    }
-
-    fn provide_keyboard(&self, request_type: RequestType) -> ReplyKeyboardMarkup {
-        match request_type {
-            RequestType::BillPlease => keyboard_factory(&self.keyboards.pay),
-            RequestType::DeletePlease => keyboard_factory(&self.keyboards.delete),
-            RequestType::Options => keyboard_factory(&self.keyboards.options),
-            RequestType::ChangePrice => keyboard_factory(&self.keyboards.price),
-            _ => keyboard_factory(&self.keyboards.main),
-        }
-    }
-}
-
 fn get_text_from_message(telegram_message: &telegram_types::Message) -> String {
     match &telegram_message.text {
         Some(text) => text.to_string(),
@@ -350,7 +144,6 @@ fn get_ngrok_url() -> Option<String> {
 
 fn is_test() -> bool {
     let args = get_args();
-    println!("istest: {}", args[3]);
     match args.len() {
         4 if args[3] == "test" => true,
         2 if args[1] == "test" => true,
@@ -411,7 +204,6 @@ async fn main() -> reqwest::Result<()> {
     // Set env-variables (port and postgres-db)
     dotenv().ok();
 
-    println!("isTESTMAIN: {}", is_test());
     let api_key = match is_test() {
         true => std::env::var("API_KEY_TEST"),
         false => std::env::var("API_KEY"),

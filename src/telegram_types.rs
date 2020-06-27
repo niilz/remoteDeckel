@@ -8,6 +8,16 @@ pub struct Update {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct PreCheckoutQuery {
+    id: String,
+    from: User,
+    currency: String,
+    // In cents (1.50EUR = 150)
+    total_amount: i32,
+    invoice_payload: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Message {
     pub message_id: i32,
     pub date: i32,
@@ -93,8 +103,8 @@ pub struct InvoiceReplyMessage {
     pub start_parameter: String,
     pub currency: String,
     pub prices: Vec<LabeledPrice>,
-    pub provider_data: String,
-    pub photo_url: String,
+    pub provider_data: Option<String>,
+    pub photo_url: Option<String>,
     // pub photo_width: i32,
     // pub photo_height: i32,
     // pub reply_markup: InlineKeyboardMarkup,
@@ -105,6 +115,14 @@ pub struct LabeledPrice {
     label: String,
     // In cents (1.50EUR = 150)
     amount: i32,
+}
+impl LabeledPrice {
+    pub fn new(label: &str, amount: i32) -> Self {
+        LabeledPrice {
+            label: label.to_string(),
+            amount,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -125,16 +143,6 @@ pub struct SuccessfulPayment {
     invoice_payload: String,
     telegram_payment_charge_id: String,
     provider_payment_charge_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PreCheckoutQuery {
-    id: String,
-    from: User,
-    currency: String,
-    // In cents (1.50EUR = 150)
-    total_amount: i32,
-    invoice_payload: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
