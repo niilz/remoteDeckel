@@ -4,3 +4,4 @@ updateJson
 .env
 notes*
 rocket.toml
+.clever*
