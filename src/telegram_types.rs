@@ -5,16 +5,7 @@ pub struct Update {
     pub update_id: i32,
     pub message: Option<Message>,
     pub pre_checkout_query: Option<PreCheckoutQuery>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PreCheckoutQuery {
-    id: String,
-    from: User,
-    currency: String,
-    // In cents (1.50EUR = 150)
-    total_amount: i32,
-    invoice_payload: String,
+    pub successful_payment: Option<SuccessfulPayment>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,6 +17,26 @@ pub struct Message {
     pub text: Option<String>,
     pub sticker: Option<Sticker>,
     pub successful_payment: Option<SuccessfulPayment>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PreCheckoutQuery {
+    pub id: String,
+    pub from: User,
+    pub currency: String,
+    // In cents (1.50EUR = 150)
+    pub total_amount: i32,
+    pub invoice_payload: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SuccessfulPayment {
+    pub currency: String,
+    // In cents (1.50EUR = 150)
+    pub total_amount: i32,
+    pub invoice_payload: String,
+    pub telegram_payment_charge_id: String,
+    pub provider_payment_charge_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -107,7 +118,6 @@ pub struct InvoiceReplyMessage {
     pub photo_url: Option<String>,
     // pub photo_width: i32,
     // pub photo_height: i32,
-    // pub reply_markup: InlineKeyboardMarkup,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -125,6 +135,7 @@ impl LabeledPrice {
     }
 }
 
+// TODO: Kann das weg?
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Invoice {
     title: String,
@@ -136,20 +147,26 @@ pub struct Invoice {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SuccessfulPayment {
-    currency: String,
-    // In cents (1.50EUR = 150)
-    total_amount: i32,
-    invoice_payload: String,
-    telegram_payment_charge_id: String,
-    provider_payment_charge_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct PreCheckoutQueryResponseMessage {
     // answerPreCheckoutQuery
-    method: String,
-    pre_checkout_query_id: String,
-    ok: bool,
-    error_message: Option<String>,
+    pub method: String,
+    pub pre_checkout_query_id: String,
+    pub ok: bool,
+    pub error_message: Option<String>,
+}
+impl PreCheckoutQueryResponseMessage {
+    pub fn new(id: &str, is_checkout_granted: bool) -> PreCheckoutQueryResponseMessage {
+        PreCheckoutQueryResponseMessage {
+            method: "answerPreCheckoutQuery".to_string(),
+            pre_checkout_query_id: id.to_string(),
+            ok: is_checkout_granted,
+            // While there are no options and a donation can not be out of stock,
+            // we only send an error if the total is above a certain threshold (for security reasons).
+            error_message: if is_checkout_granted {
+                None
+            } else {
+                Some("The total was to high. Transaction denied for security purposes.".to_string())
+            },
+        }
+    }
 }

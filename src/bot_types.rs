@@ -1,5 +1,8 @@
 use crate::bot_types::RequestType::*;
+use crate::models;
 use crate::telegram_types::ReplyKeyboardMarkup;
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RequestType {
@@ -109,5 +112,29 @@ pub fn keyboard_factory(keyboard: &Vec<(RequestType, String)>) -> ReplyKeyboardM
     ReplyKeyboardMarkup {
         keyboard,
         resize_keyboard: false,
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Payload {
+    pub user_id: i32,
+    pub chat_id: i32,
+    pub username: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub total: i32,
+    // pub payed_date: DateTime<Utc>,
+}
+impl Payload {
+    pub fn new(user: &models::User, chat_id: i32, total: i32) -> Self {
+        Payload {
+            user_id: user.id,
+            chat_id,
+            username: user.name.to_string(),
+            first_name: user.first_name.to_string(),
+            last_name: user.last_name.to_string(),
+            total,
+            // TODO: payed_date: Utc::now() + Duration::hours(2),
+        }
     }
 }

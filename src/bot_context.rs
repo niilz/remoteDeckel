@@ -1,4 +1,4 @@
-use crate::bot_types::{keyboard_factory, Keyboards, RequestType};
+use crate::bot_types::{keyboard_factory, Keyboards, Payload, RequestType};
 use crate::models::UpdateUser;
 use crate::telegram_types::LabeledPrice as lb;
 use crate::telegram_types::{self, *};
@@ -39,24 +39,29 @@ impl BotContext {
         let response_text = match request_type {
             RequestType::Start => messages::WELCOME_MESSAGE.to_string(),
             RequestType::Order => {
-                self.order_drink();
-                "👍 Ich schreib's auf deinen Deckel.".to_string()
+                if self.get_damage() > 1000 {
+                    format!("🤔 Du hast schon {:.2}€ auf dem Deckel.
+                        Ich muss leider erst abrechnen bevor du mehr bestellen kannst.", money_in_eur(self.get_damage()))
+                } else {
+                    self.order_drink();
+                    "👍 Ich schreib's auf deinen Deckel.".to_string()
+                }
             }
             RequestType::ShowDamage => format!(
                 "Du hast bisher {} Biers bestellt.\nBeim aktuellen Preis von {:.2}€ beträgt dein derzeitiger Deckel insgesamt {:.2}€.",
                 self.current_user.drink_count,
-                self.money_in_eur(self.current_user.price.0),
-                self.money_in_eur(self.get_damage())
+                money_in_eur(self.current_user.price.0),
+                money_in_eur(self.get_damage())
             ),
             RequestType::BillPlease => format!(
                 "💶 Dein derzeitiger Schaden beträgt {:.2}€. 💶\nMöchtest du wirklich zahlen?",
-                self.money_in_eur(self.get_damage())
+                money_in_eur(self.get_damage())
             ),
             RequestType::PayNo => "Ok, dann lass uns lieber weiter trinken.".to_string(),
             RequestType::PayYes => {
                 format!(
                 "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
-                self.money_in_eur(self.get_damage()))
+                money_in_eur(self.get_damage()))
             }
             RequestType::DeletePlease => {
                 "Möchtest du deine Userdaten wirklich löschen?".to_string()
@@ -81,7 +86,7 @@ impl BotContext {
                         self.update_price(price);
                         format!(
                             "Alles klar, jedes Getränk kostet jetzt {:.2}€",
-                            self.money_in_eur(price)
+                            money_in_eur(price)
                         )
                     }
                     _ => "🥁 Sorry aber das ist hier kein Wunschkonzert 🥁".to_string(),
@@ -92,18 +97,18 @@ impl BotContext {
                 match last_paid_amount {
                     0 => "Du hast bisher noch nicht gespendet.".to_string(),
                     _ => format!("Deine letzte Spende war am {:?} und betrug {:.2}€.",
-                        self.get_last_paid_as_date(), self.money_in_eur(self.current_user.last_total.0)),
+                        self.get_last_paid_as_date(), money_in_eur(self.current_user.last_total.0)),
                 }
             }
             RequestType::ShowTotal => format!(
                 "Insgesamt hast du {:.2}€ gespendet.",
-                self.money_in_eur(self.current_user.total.0)
+                money_in_eur(self.current_user.total.0)
             ),
             RequestType::ShowTotalAll => {
                 let total_all = self.get_total_all();
                 match total_all {
                     0 => "Bisher wurde noch nicht gespendet".to_string(),
-                    _ => format!("Zusammen haben wir bisher {:.2}€ gespendet.", self.money_in_eur(total_all)),
+                    _ => format!("Zusammen haben wir bisher {:.2}€ gespendet.", money_in_eur(total_all)),
                 }
             }
             RequestType::Unknown => {
@@ -112,18 +117,7 @@ impl BotContext {
         };
 
         match request_type {
-            RequestType::PayYes => {
-                let invoice = self.new_invoice();
-                let invoice_stringyfied = serde_json::to_string(&invoice);
-                match invoice_stringyfied {
-                    Ok(invoice) => {
-                        println!("{:?}", invoice);
-                        serde_json::to_string(&invoice)
-                    }
-                    // TODO: Propper ResponseError if invoice can not be created
-                    Err(_e) => self.handle_request(RequestType::Unknown),
-                }
-            }
+            RequestType::PayYes => serde_json::to_string(&self.new_invoice()),
             _ => {
                 let method = "sendMessage".to_string();
                 let response_message = ResponseMessage::new(method, self.chat_id, response_text);
@@ -144,10 +138,6 @@ impl BotContext {
         let drinks = self.current_user.drink_count;
         let price = self.current_user.price.0;
         drinks as i64 * price
-    }
-
-    pub fn money_in_eur(&self, money: i64) -> f32 {
-        money as f32 / 100.00
     }
 
     pub fn convert_price(&self) -> Result<i64, std::num::ParseIntError> {
@@ -224,28 +214,32 @@ impl BotContext {
             _ => keyboard_factory(&self.keyboards.main),
         }
     }
+
     pub fn new_invoice(&self) -> InvoiceReplyMessage {
         let provider_token =
             std::env::var("PROVIDER_TOKEN").expect("Could not get provider_token from environment");
-        let user = &self.current_user;
         let prices = vec![
-            lb::new("Getränkeanzahl", user.drink_count as i32),
-            lb::new("Preis pro Getränk", user.price.0 as i32),
-            lb::new("Gesamt", self.get_damage() as i32),
+            lb::new("Gesamt-Netto", self.get_damage_net()),
+            lb::new("Stripe-Gebühr", self.stripe_fee()),
         ];
+        let payload = match serde_json::to_string(&Payload::new(
+            &self.current_user,
+            self.chat_id,
+            self.get_damage() as i32,
+        )) {
+            Ok(payload) => payload,
+            Err(_) => "Could not parse the users payload".to_string(),
+        };
         InvoiceReplyMessage {
             method: "sendInvoice".to_string(),
             chat_id: self.chat_id,
             title: "Spendenrechnung".to_string(),
             description: format!(
-                "Rechnung für eine Spende in Höhe von {:.2}€ an deine Lieblingskneipe",
-                self.get_damage()
+                "Rechnung für eine Spende in Höhe von {:.2}€ an deine Lieblingskneipe.\n(Der Betrag enthält eine Gebühr von {:.2}€, der von dem Payment-Provider Stripe erhoben wird.)",
+                money_in_eur(self.get_damage()),
+                money_in_eur(self.stripe_fee() as i64),
             ),
-            payload: format!(
-                "User with id: {} has received invoice over {:.2}€",
-                user.id,
-                self.get_damage()
-            ),
+            payload,
             provider_token,
             start_parameter: "TODO".to_string(),
             currency: "EUR".to_string(),
@@ -254,6 +248,25 @@ impl BotContext {
             provider_data: None,
             // photo_url: Some("../img/remoteDeckel-Logo.png".to_string()),
             photo_url: None,
+            // TODO: change inline_keyboard_markup to "spenden" instead of "bezahlen".
+            // If possible change the three option below (without PayYes but with Steal and PayNo)
         }
     }
+
+    fn stripe_fee(&self) -> i32 {
+        let fee_percentage = 0.014;
+        let fee_fix_amount = 0.25;
+        let raw_damage = money_in_eur(self.get_damage());
+        let total_damage = raw_damage * fee_percentage + fee_fix_amount;
+        (total_damage * 100_f32) as i32
+    }
+
+    fn get_damage_net(&self) -> i32 {
+        self.get_damage() as i32 - self.stripe_fee()
+    }
+}
+
+// Helpers
+pub fn money_in_eur(money: i64) -> f32 {
+    money as f32 / 100.00
 }

@@ -15,8 +15,8 @@ extern crate rocket;
 extern crate diesel_migrations;
 
 use bot_lib::bot_context::BotContext;
-use bot_lib::bot_types::Keyboards;
-use bot_lib::telegram_types::{self, Update};
+use bot_lib::bot_types::{Keyboards, Payload};
+use bot_lib::telegram_types::{self, PreCheckoutQueryResponseMessage, ResponseMessage, Update};
 use bot_lib::{db, models};
 use dotenv::dotenv;
 use reqwest;
@@ -31,6 +31,13 @@ embed_migrations!();
 
 static HOUR: i64 = 3600;
 
+/// CleverCloud sends continiuous (almost every minute) monitoring-GET-requests to the app-route.
+/// Those cause a rocket-error if no GET("/") is configured.
+/// To filter them out we want to figure out whether the Header of X-Clevercloud-Monitoring is
+/// present.
+/// The MonitoringRequest implements FromRequest in a way that it checks for this header to be present.
+/// The handler just dropts those. All other GET-requests to "/" will still cause an error in order
+/// to notice when this happens.
 struct MonitoringRequest(String);
 
 impl<'a, 'r> FromRequest<'a, 'r> for MonitoringRequest {
@@ -57,10 +64,39 @@ fn handle_get(_metrics_request: MonitoringRequest) -> String {
 
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
-    let incoming_message = match &update.message {
-        Some(message) => message,
-        None => panic!("No message?...TODO: http 500 response"),
+    let json_response_str = match (
+        update.message.as_ref(),
+        update.pre_checkout_query.as_ref(),
+        update.successful_payment.as_ref(),
+    ) {
+        (Some(message), None, None) => create_response_message(message, conn),
+        (None, Some(query), None) => create_answer_pre_checkout_response(query),
+        (None, None, Some(successful_payment)) => {
+            // TODO: Do something with successful_payment information
+            // And extract reply on successful_payment
+            // And run pay!!! might have to be extracted from Bot_Context
+            let payload: Payload = match serde_json::from_str(&successful_payment.invoice_payload) {
+                Ok(payload) => payload,
+                Err(e) => panic!("Could not parse pre_checkout_query.payload. Error: {}", e),
+            };
+            let response_message = ResponseMessage {
+                method: "sendMessage".to_string(),
+                chat_id: payload.chat_id,
+                text: "Supi eine Test-Zahlung funktioniert".to_string(),
+                reply_markup: None,
+            };
+            serde_json::to_string(&response_message).unwrap()
+        }
+        _ => panic!("No message or query?...TODO: http 500 response"),
     };
+
+    content::Json(json_response_str)
+}
+
+fn create_response_message(
+    incoming_message: &telegram_types::Message,
+    conn: db::UserDbConn,
+) -> String {
     let telegram_user = match &incoming_message.from {
         Some(user) => user,
         None => panic!("message has no sender?...(from = None)"),
@@ -84,12 +120,26 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
         BotContext::new(current_user, conn, chat_id, user_text, timestamp, keyboards);
     let request_type = bot_context.get_request_type(&incoming_message);
 
-    let json_response = match bot_context.handle_request(request_type) {
+    let response_message_json = match bot_context.handle_request(request_type) {
         Ok(json) => json,
-        Err(e) => panic!("{}", e),
+        Err(e) => panic!("Request could not be handles. Error: {}", e),
     };
+    response_message_json
+}
 
-    content::Json(json_response)
+fn create_answer_pre_checkout_response(query: &telegram_types::PreCheckoutQuery) -> String {
+    println!("{:?}", &query);
+    let payload_json = serde_json::from_str(&query.invoice_payload);
+    // TODO: Do something more useful (maybe like persisting) query.payload
+    let payload: Payload = match payload_json {
+        Ok(payload) => payload,
+        Err(e) => panic!("Could not parse pre_checkout_query.payload. Error: {}", e),
+    };
+    let is_total_ok = payload.total > 1000;
+    let answer_query = PreCheckoutQueryResponseMessage::new(&query.id, is_total_ok);
+    let answer_query_json = serde_json::to_string(&answer_query).unwrap();
+    println!("pre_checkout_answer: {:?}", answer_query_json);
+    answer_query_json
 }
 
 fn get_user_from_db(
