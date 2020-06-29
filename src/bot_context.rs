@@ -13,7 +13,6 @@ pub struct BotContext {
     chat_id: i32,
     request_message: String,
     date: DateTime<Utc>,
-    keyboards: Keyboards,
 }
 
 impl BotContext {
@@ -23,7 +22,6 @@ impl BotContext {
         chat_id: i32,
         request_message: String,
         timestamp: i64,
-        keyboards: Keyboards,
     ) -> Self {
         BotContext {
             current_user,
@@ -31,11 +29,14 @@ impl BotContext {
             chat_id,
             request_message: request_message.to_string(),
             date: Utc.timestamp(timestamp, 0),
-            keyboards,
         }
     }
 
-    pub fn handle_request(&mut self, request_type: RequestType) -> serde_json::Result<String> {
+    pub fn handle_request(
+        &mut self,
+        request_type: RequestType,
+        keyboards: &Keyboards,
+    ) -> serde_json::Result<String> {
         let response_text = match request_type {
             RequestType::Start => messages::WELCOME_MESSAGE.to_string(),
             RequestType::Order => {
@@ -58,11 +59,6 @@ impl BotContext {
                 money_in_eur(self.get_damage())
             ),
             RequestType::PayNo => "Ok, dann lass uns lieber weiter trinken.".to_string(),
-            RequestType::PayYes => {
-                format!(
-                "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {},-€ 💶\n🦸 Du bist ein Retter! 🦸",
-                money_in_eur(self.get_damage()))
-            }
             RequestType::DeletePlease => {
                 "Möchtest du deine Userdaten wirklich löschen?".to_string()
             }
@@ -114,6 +110,7 @@ impl BotContext {
             RequestType::Unknown => {
                 "🤷 Ehm, sorry darauf weiß ich grade keine Antwort...".to_string()
             }
+            RequestType::PayYes => "IGNORED".to_string(),
         };
 
         match request_type {
@@ -121,7 +118,7 @@ impl BotContext {
             _ => {
                 let method = "sendMessage".to_string();
                 let response_message = ResponseMessage::new(method, self.chat_id, response_text);
-                let keyboard = self.provide_keyboard(request_type);
+                let keyboard = keyboards.get_keyboard(request_type);
                 let response_message = response_message.keyboard(keyboard);
                 serde_json::to_string(&response_message)
             }
@@ -131,7 +128,7 @@ impl BotContext {
     pub fn order_drink(&mut self) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
         update_user.drink_count = Some(self.current_user.drink_count + 1);
-        db::update_user(&self.current_user, &update_user, &self.conn);
+        db::update_user(self.current_user.id, &update_user, &self.conn);
     }
 
     pub fn get_damage(&self) -> i64 {
@@ -153,7 +150,7 @@ impl BotContext {
     pub fn update_price(&mut self, new_price: i64) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
         update_user.price = Some(PgMoney(new_price));
-        db::update_user(&self.current_user, &update_user, &self.conn);
+        db::update_user(self.current_user.id, &update_user, &self.conn);
     }
 
     pub fn pay(&mut self) {
@@ -165,13 +162,13 @@ impl BotContext {
         update_user.last_total = Some(PgMoney(new_last_total));
         update_user.total = Some(PgMoney(total));
         update_user.drink_count = Some(0);
-        db::update_user(&self.current_user, &update_user, &self.conn);
+        db::update_user(self.current_user.id, &update_user, &self.conn);
     }
 
     pub fn erase_drinks(&mut self) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
         update_user.drink_count = Some(0);
-        db::update_user(&self.current_user, &update_user, &self.conn);
+        db::update_user(self.current_user.id, &update_user, &self.conn);
     }
 
     pub fn get_last_paid_as_date(&self) -> String {
@@ -188,7 +185,11 @@ impl BotContext {
         db::delete_user(&self.current_user, &self.conn)
     }
 
-    pub fn get_request_type(&self, message: &telegram_types::Message) -> RequestType {
+    pub fn get_request_type(
+        &self,
+        message: &telegram_types::Message,
+        keyboards: &Keyboards,
+    ) -> RequestType {
         let request_message = match &message.text {
             Some(text) => text.to_string(),
             None => match &message.sticker {
@@ -202,17 +203,7 @@ impl BotContext {
         if request_message == "/start" {
             return RequestType::Start;
         }
-        self.keyboards.get_request_type(&request_message)
-    }
-
-    pub fn provide_keyboard(&self, request_type: RequestType) -> ReplyKeyboardMarkup {
-        match request_type {
-            RequestType::BillPlease => keyboard_factory(&self.keyboards.pay),
-            RequestType::DeletePlease => keyboard_factory(&self.keyboards.delete),
-            RequestType::Options => keyboard_factory(&self.keyboards.options),
-            RequestType::ChangePrice => keyboard_factory(&self.keyboards.price),
-            _ => keyboard_factory(&self.keyboards.main),
-        }
+        keyboards.get_request_type(&request_message)
     }
 
     pub fn new_invoice(&self) -> InvoiceReplyMessage {
@@ -225,7 +216,7 @@ impl BotContext {
         let payload = match serde_json::to_string(&Payload::new(
             &self.current_user,
             self.chat_id,
-            self.get_damage() as i32,
+            self.get_damage(),
         )) {
             Ok(payload) => payload,
             Err(_) => "Could not parse the users payload".to_string(),
@@ -264,6 +255,20 @@ impl BotContext {
     fn get_damage_net(&self) -> i32 {
         self.get_damage() as i32 - self.stripe_fee()
     }
+}
+
+// Payment is not on bot_context because we have to perform it after successful_payment, where we
+// don't have the user infos in the typical way.
+pub fn pay(payload: &Payload, conn: db::UserDbConn) {
+    let last_paid = payload.payed_at;
+    let new_last_total = payload.total;
+    let total = payload.totals_sum + new_last_total;
+    let mut update_user = UpdateUser::default();
+    update_user.last_paid = Some(PgTimestamp(last_paid));
+    update_user.last_total = Some(PgMoney(new_last_total));
+    update_user.total = Some(PgMoney(total));
+    update_user.drink_count = Some(0);
+    db::update_user(payload.user_id, &update_user, &conn);
 }
 
 // Helpers

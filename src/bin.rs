@@ -14,9 +14,11 @@ extern crate rocket;
 #[macro_use]
 extern crate diesel_migrations;
 
-use bot_lib::bot_context::BotContext;
-use bot_lib::bot_types::{Keyboards, Payload};
-use bot_lib::telegram_types::{self, PreCheckoutQueryResponseMessage, ResponseMessage, Update};
+use bot_lib::bot_context::{self, money_in_eur, BotContext};
+use bot_lib::bot_types::{Keyboards, Payload, RequestType};
+use bot_lib::telegram_types::{
+    self, PreCheckoutQueryResponseMessage, ResponseMessage, SuccessfulPayment, Update,
+};
 use bot_lib::{db, models};
 use dotenv::dotenv;
 use reqwest;
@@ -79,15 +81,10 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
                 Ok(payload) => payload,
                 Err(e) => panic!("Could not parse pre_checkout_query.payload. Error: {}", e),
             };
-            let response_message = ResponseMessage {
-                method: "sendMessage".to_string(),
-                chat_id: payload.chat_id,
-                text: "Supi eine Test-Zahlung funktioniert".to_string(),
-                reply_markup: None,
-            };
-            serde_json::to_string(&response_message).unwrap()
+            bot_context::pay(&payload, conn);
+            create_successful_payment_response(&payload)
         }
-        _ => panic!("No message or query?...TODO: http 500 response"),
+        _ => panic!("No message, query or successful_payment?...TODO: http 500 response"),
     };
 
     content::Json(json_response_str)
@@ -115,12 +112,11 @@ fn create_response_message(
     let chat_id = incoming_message.chat.id;
     let user_text = get_text_from_message(&incoming_message);
     let timestamp = incoming_message.date as i64 + (HOUR * 2);
+    let mut bot_context = BotContext::new(current_user, conn, chat_id, user_text, timestamp);
     let keyboards = Keyboards::init();
-    let mut bot_context =
-        BotContext::new(current_user, conn, chat_id, user_text, timestamp, keyboards);
-    let request_type = bot_context.get_request_type(&incoming_message);
+    let request_type = bot_context.get_request_type(&incoming_message, &keyboards);
 
-    let response_message_json = match bot_context.handle_request(request_type) {
+    let response_message_json = match bot_context.handle_request(request_type, &keyboards) {
         Ok(json) => json,
         Err(e) => panic!("Request could not be handles. Error: {}", e),
     };
@@ -138,8 +134,20 @@ fn create_answer_pre_checkout_response(query: &telegram_types::PreCheckoutQuery)
     let is_total_ok = payload.total > 1000;
     let answer_query = PreCheckoutQueryResponseMessage::new(&query.id, is_total_ok);
     let answer_query_json = serde_json::to_string(&answer_query).unwrap();
-    println!("pre_checkout_answer: {:?}", answer_query_json);
     answer_query_json
+}
+
+fn create_successful_payment_response(payload: &Payload) -> String {
+    let response_message = ResponseMessage {
+        method: "sendMessage".to_string(),
+        chat_id: payload.chat_id,
+        text: format!(
+            "🙏 Danke für deine Spende 🙏\n💶 in Höhe von {:.2},-€ 💶\n🦸 Du bist ein Retter! 🦸",
+            money_in_eur(payload.total)
+        ),
+        reply_markup: Some(Keyboards::init().get_keyboard(RequestType::PayYes)),
+    };
+    serde_json::to_string(&response_message).unwrap()
 }
 
 fn get_user_from_db(

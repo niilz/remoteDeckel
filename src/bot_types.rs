@@ -89,6 +89,16 @@ impl Keyboards {
             },
         }
     }
+
+    pub fn get_keyboard(&self, request_type: RequestType) -> ReplyKeyboardMarkup {
+        match request_type {
+            RequestType::BillPlease => keyboard_factory(&self.pay),
+            RequestType::DeletePlease => keyboard_factory(&self.delete),
+            RequestType::Options => keyboard_factory(&self.options),
+            RequestType::ChangePrice => keyboard_factory(&self.price),
+            _ => keyboard_factory(&self.main),
+        }
+    }
 }
 
 fn get_request_type_by_answer(
@@ -122,11 +132,13 @@ pub struct Payload {
     pub username: String,
     pub first_name: String,
     pub last_name: String,
-    pub total: i32,
-    // pub payed_date: DateTime<Utc>,
+    pub total: i64,
+    pub payed_at: i64,
+    pub totals_sum: i64,
 }
+
 impl Payload {
-    pub fn new(user: &models::User, chat_id: i32, total: i32) -> Self {
+    pub fn new(user: &models::User, chat_id: i32, total: i64) -> Self {
         Payload {
             user_id: user.id,
             chat_id,
@@ -134,7 +146,8 @@ impl Payload {
             first_name: user.first_name.to_string(),
             last_name: user.last_name.to_string(),
             total,
-            // TODO: payed_date: Utc::now() + Duration::hours(2),
+            totals_sum: user.last_total.0,
+            payed_at: (Utc::now() + Duration::hours(2)).timestamp(),
         }
     }
 }
