@@ -1,5 +1,6 @@
 use crate::bot_types::RequestType::*;
 use crate::telegram_types::ReplyKeyboardMarkup;
+use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RequestType {
@@ -86,6 +87,16 @@ impl Keyboards {
             },
         }
     }
+
+    pub fn get_keyboard(&self, request_type: RequestType) -> ReplyKeyboardMarkup {
+        match request_type {
+            RequestType::BillPlease => keyboard_factory(&self.pay),
+            RequestType::DeletePlease => keyboard_factory(&self.delete),
+            RequestType::Options => keyboard_factory(&self.options),
+            RequestType::ChangePrice => keyboard_factory(&self.price),
+            _ => keyboard_factory(&self.main),
+        }
+    }
 }
 
 fn get_request_type_by_answer(
@@ -109,5 +120,26 @@ pub fn keyboard_factory(keyboard: &Vec<(RequestType, String)>) -> ReplyKeyboardM
     ReplyKeyboardMarkup {
         keyboard,
         resize_keyboard: false,
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+// Will be send across the wire as String on InvoiceReplyMessage
+// Final String can NOT be longer than 128 characters!!!
+pub struct Payload {
+    pub user_id: i32,
+    pub chat_id: i32,
+    pub total: i64,
+    pub totals_sum: i64,
+}
+
+impl Payload {
+    pub fn new(user_id: i32, chat_id: i32, total: i64, totals_sum: i64) -> Self {
+        Payload {
+            user_id,
+            chat_id,
+            total,
+            totals_sum,
+        }
     }
 }

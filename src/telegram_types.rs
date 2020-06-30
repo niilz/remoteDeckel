@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct Update {
     pub update_id: i32,
     pub message: Option<Message>,
+    pub pre_checkout_query: Option<PreCheckoutQuery>,
+    pub successful_payment: Option<SuccessfulPayment>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -14,6 +16,27 @@ pub struct Message {
     pub from: Option<User>,
     pub text: Option<String>,
     pub sticker: Option<Sticker>,
+    pub successful_payment: Option<SuccessfulPayment>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PreCheckoutQuery {
+    pub id: String,
+    pub from: User,
+    pub currency: String,
+    // In cents (1.50EUR = 150)
+    pub total_amount: i32,
+    pub invoice_payload: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SuccessfulPayment {
+    pub currency: String,
+    // In cents (1.50EUR = 150)
+    pub total_amount: i32,
+    pub invoice_payload: String,
+    pub telegram_payment_charge_id: String,
+    pub provider_payment_charge_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -47,21 +70,7 @@ pub struct Sticker {
     pub emoji: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Entity {
-    offset: i32,
-    length: i32,
-    #[serde(rename = "type")]
-    typ: String,
-}
-
-// Send types
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SendMessage {
-    pub chat_id: i32,
-    pub text: String,
-}
-
+// Send-Types
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResponseMessage {
     pub method: String,
@@ -88,4 +97,65 @@ impl ResponseMessage {
 pub struct ReplyKeyboardMarkup {
     pub keyboard: Vec<Vec<String>>,
     pub resize_keyboard: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InvoiceReplyMessage {
+    // Must be sendInvoice
+    pub method: String,
+    pub chat_id: i32,
+    // 1-32 Chars
+    pub title: String,
+    // 1-255 Chars
+    pub description: String,
+    // 1-128 Chars (not showed to user)
+    pub payload: String,
+    pub provider_token: String,
+    pub start_parameter: String,
+    pub currency: String,
+    pub prices: Vec<LabeledPrice>,
+    pub provider_data: Option<String>,
+    pub photo_url: Option<String>,
+    // pub photo_width: i32,
+    // pub photo_height: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LabeledPrice {
+    label: String,
+    // In cents (1.50EUR = 150)
+    amount: i32,
+}
+impl LabeledPrice {
+    pub fn new(label: &str, amount: i32) -> Self {
+        LabeledPrice {
+            label: label.to_string(),
+            amount,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PreCheckoutQueryResponseMessage {
+    // answerPreCheckoutQuery
+    pub method: String,
+    pub pre_checkout_query_id: String,
+    pub ok: bool,
+    pub error_message: Option<String>,
+}
+impl PreCheckoutQueryResponseMessage {
+    pub fn new(id: &str, is_checkout_granted: bool) -> PreCheckoutQueryResponseMessage {
+        PreCheckoutQueryResponseMessage {
+            method: "answerPreCheckoutQuery".to_string(),
+            pre_checkout_query_id: id.to_string(),
+            ok: is_checkout_granted,
+            // While there are no options and a donation can not be out of stock,
+            // we only send an error if the total is above a certain threshold (for security reasons).
+            error_message: if is_checkout_granted {
+                None
+            } else {
+                Some("The total was to high. Transaction denied for security purposes.".to_string())
+            },
+        }
+    }
 }

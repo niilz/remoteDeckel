@@ -1,5 +1,5 @@
 use crate::models;
-use crate::schema::users::dsl::{total, users};
+use crate::schema::users::dsl::{id, total, users};
 use diesel::data_types::PgMoney;
 use diesel::prelude::*;
 use rocket_contrib::databases::diesel::PgConnection;
@@ -22,12 +22,9 @@ pub fn get_user_by_id(
     users.find(given_id).first(conn)
 }
 
-pub fn update_user(
-    user: &models::User,
-    update_user: &models::UpdateUser,
-    conn: &PgConnection,
-) -> usize {
-    let updated_count = diesel::update(user)
+pub fn update_user(user_id: i32, update_user: &models::UpdateUser, conn: &PgConnection) -> usize {
+    let updated_count = diesel::update(users)
+        .filter(id.eq(user_id))
         .set(update_user)
         .execute(conn)
         .expect("Could not update user by given UpdateUser");
