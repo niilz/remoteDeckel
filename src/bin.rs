@@ -16,9 +16,7 @@ extern crate diesel_migrations;
 
 use bot_lib::bot_context::{self, money_in_eur, BotContext};
 use bot_lib::bot_types::{Keyboards, Payload, RequestType};
-use bot_lib::telegram_types::{
-    self, PreCheckoutQueryResponseMessage, ResponseMessage, SuccessfulPayment, Update,
-};
+use bot_lib::telegram_types::{self, PreCheckoutQueryResponseMessage, ResponseMessage, Update};
 use bot_lib::{db, models};
 use dotenv::dotenv;
 use reqwest;
@@ -66,25 +64,28 @@ fn handle_get(_metrics_request: MonitoringRequest) -> String {
 
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
-    let json_response_str = match (
-        update.message.as_ref(),
-        update.pre_checkout_query.as_ref(),
-        update.successful_payment.as_ref(),
-    ) {
-        (Some(message), None, None) => create_response_message(message, conn),
-        (None, Some(query), None) => create_answer_pre_checkout_response(query),
-        (None, None, Some(successful_payment)) => {
-            // TODO: Do something with successful_payment information
-            // And extract reply on successful_payment
-            // And run pay!!! might have to be extracted from Bot_Context
-            let payload: Payload = match serde_json::from_str(&successful_payment.invoice_payload) {
-                Ok(payload) => payload,
-                Err(e) => panic!("Could not parse pre_checkout_query.payload. Error: {}", e),
-            };
-            bot_context::pay(&payload, conn);
-            create_successful_payment_response(&payload)
+    let json_response_str = match (update.pre_checkout_query.as_ref(), update.message.as_ref()) {
+        (Some(query), None) => create_answer_pre_checkout_response(query),
+        (None, Some(message)) => {
+            match message.successful_payment.as_ref() {
+                None => create_response_message(message, conn),
+                Some(successful_payment) => {
+                    // TODO: Do something with successful_payment information
+                    // And extract reply on successful_payment
+                    // And run pay!!! might have to be extracted from Bot_Context
+                    let payload: Payload =
+                        match serde_json::from_str(&successful_payment.invoice_payload) {
+                            Ok(payload) => payload,
+                            Err(e) => {
+                                panic!("Could not parse pre_checkout_query.payload. Error: {}", e)
+                            }
+                        };
+                    bot_context::pay(&payload, conn);
+                    create_successful_payment_response(&payload)
+                }
+            }
         }
-        _ => panic!("No message, query or successful_payment?...TODO: http 500 response"),
+        _ => panic!("No query or message?...TODO: http 500 response"),
     };
 
     content::Json(json_response_str)
@@ -124,14 +125,13 @@ fn create_response_message(
 }
 
 fn create_answer_pre_checkout_response(query: &telegram_types::PreCheckoutQuery) -> String {
-    println!("{:?}", &query);
     let payload_json = serde_json::from_str(&query.invoice_payload);
     // TODO: Do something more useful (maybe like persisting) query.payload
     let payload: Payload = match payload_json {
         Ok(payload) => payload,
         Err(e) => panic!("Could not parse pre_checkout_query.payload. Error: {}", e),
     };
-    let is_total_ok = payload.total > 1000;
+    let is_total_ok = payload.total < 1000;
     let answer_query = PreCheckoutQueryResponseMessage::new(&query.id, is_total_ok);
     let answer_query_json = serde_json::to_string(&answer_query).unwrap();
     answer_query_json

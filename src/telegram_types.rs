@@ -135,17 +135,6 @@ impl LabeledPrice {
     }
 }
 
-// TODO: Kann das weg?
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Invoice {
-    title: String,
-    description: String,
-    start_parameter: String,
-    currency: String,
-    // In cents (1.50EUR = 150)
-    total_amount: i32,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PreCheckoutQueryResponseMessage {
     // answerPreCheckoutQuery

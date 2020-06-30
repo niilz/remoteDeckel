@@ -1,9 +1,9 @@
-use crate::bot_types::{keyboard_factory, Keyboards, Payload, RequestType};
+use crate::bot_types::{Keyboards, Payload, RequestType};
 use crate::models::UpdateUser;
 use crate::telegram_types::LabeledPrice as lb;
 use crate::telegram_types::{self, *};
 use crate::{db, messages, models};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use diesel::pg::data_types::PgTimestamp;
 use diesel::pg::types::money::PgMoney;
 
@@ -12,6 +12,7 @@ pub struct BotContext {
     conn: db::UserDbConn,
     chat_id: i32,
     request_message: String,
+    // Currently not used
     date: DateTime<Utc>,
 }
 
@@ -41,8 +42,7 @@ impl BotContext {
             RequestType::Start => messages::WELCOME_MESSAGE.to_string(),
             RequestType::Order => {
                 if self.get_damage() > 1000 {
-                    format!("🤔 Du hast schon {:.2}€ auf dem Deckel.
-                        Ich muss leider erst abrechnen bevor du mehr bestellen kannst.", money_in_eur(self.get_damage()))
+                    format!("🤔 Du hast schon {:.2}€ auf dem Deckel.\nIch muss leider erst abrechnen bevor du mehr bestellen kannst.", money_in_eur(self.get_damage()))
                 } else {
                     self.order_drink();
                     "👍 Ich schreib's auf deinen Deckel.".to_string()
@@ -85,7 +85,7 @@ impl BotContext {
                             money_in_eur(price)
                         )
                     }
-                    _ => "🥁 Sorry aber das ist hier kein Wunschkonzert 🥁".to_string(),
+                    _ => unreachable!(),
                 }
             }
             RequestType::ShowLast => {
@@ -153,18 +153,6 @@ impl BotContext {
         db::update_user(self.current_user.id, &update_user, &self.conn);
     }
 
-    pub fn pay(&mut self) {
-        let last_paid = self.date.timestamp();
-        let new_last_total = self.get_damage();
-        let total = self.current_user.total.0 + new_last_total;
-        let mut update_user = UpdateUser::default();
-        update_user.last_paid = Some(PgTimestamp(last_paid));
-        update_user.last_total = Some(PgMoney(new_last_total));
-        update_user.total = Some(PgMoney(total));
-        update_user.drink_count = Some(0);
-        db::update_user(self.current_user.id, &update_user, &self.conn);
-    }
-
     pub fn erase_drinks(&mut self) {
         let mut update_user = UpdateUser::from_user(&self.current_user);
         update_user.drink_count = Some(0);
@@ -213,20 +201,22 @@ impl BotContext {
             lb::new("Gesamt-Netto", self.get_damage_net()),
             lb::new("Stripe-Gebühr", self.stripe_fee()),
         ];
-        let payload = match serde_json::to_string(&Payload::new(
-            &self.current_user,
+        let payload_result = serde_json::to_string(&Payload::new(
+            self.current_user.id,
             self.chat_id,
             self.get_damage(),
-        )) {
+            self.current_user.total.0,
+        ));
+        let payload = match payload_result {
             Ok(payload) => payload,
-            Err(_) => "Could not parse the users payload".to_string(),
+            Err(e) => panic!("could not parse payload. Error: {}", e),
         };
         InvoiceReplyMessage {
             method: "sendInvoice".to_string(),
             chat_id: self.chat_id,
             title: "Spendenrechnung".to_string(),
             description: format!(
-                "Rechnung für eine Spende in Höhe von {:.2}€ an deine Lieblingskneipe.\n(Der Betrag enthält eine Gebühr von {:.2}€, der von dem Payment-Provider Stripe erhoben wird.)",
+                "TEST-Rechnung für eine Spende in Höhe von {:.2}€ an deine Lieblingskneipe.\n(Der Betrag enthält eine Gebühr von {:.2}€, der von dem Payment-Provider Stripe erhoben wird.) DIES IST EIN TEST!\nZAHLUNGEN SIND NOCH NICHT MÖGLICH!",
                 money_in_eur(self.get_damage()),
                 money_in_eur(self.stripe_fee() as i64),
             ),
@@ -260,7 +250,7 @@ impl BotContext {
 // Payment is not on bot_context because we have to perform it after successful_payment, where we
 // don't have the user infos in the typical way.
 pub fn pay(payload: &Payload, conn: db::UserDbConn) {
-    let last_paid = payload.payed_at;
+    let last_paid = (Utc::now() + Duration::hours(2)).timestamp();
     let new_last_total = payload.total;
     let total = payload.totals_sum + new_last_total;
     let mut update_user = UpdateUser::default();

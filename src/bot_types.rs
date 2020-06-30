@@ -1,7 +1,5 @@
 use crate::bot_types::RequestType::*;
-use crate::models;
 use crate::telegram_types::ReplyKeyboardMarkup;
-use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
@@ -126,28 +124,22 @@ pub fn keyboard_factory(keyboard: &Vec<(RequestType, String)>) -> ReplyKeyboardM
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+// Will be send across the wire as String on InvoiceReplyMessage
+// Final String can NOT be longer than 128 characters!!!
 pub struct Payload {
     pub user_id: i32,
     pub chat_id: i32,
-    pub username: String,
-    pub first_name: String,
-    pub last_name: String,
     pub total: i64,
-    pub payed_at: i64,
     pub totals_sum: i64,
 }
 
 impl Payload {
-    pub fn new(user: &models::User, chat_id: i32, total: i64) -> Self {
+    pub fn new(user_id: i32, chat_id: i32, total: i64, totals_sum: i64) -> Self {
         Payload {
-            user_id: user.id,
+            user_id,
             chat_id,
-            username: user.name.to_string(),
-            first_name: user.first_name.to_string(),
-            last_name: user.last_name.to_string(),
             total,
-            totals_sum: user.last_total.0,
-            payed_at: (Utc::now() + Duration::hours(2)).timestamp(),
+            totals_sum,
         }
     }
 }
