@@ -13,13 +13,13 @@ It works as follows:
 
 ## Background:
 
-This idea has been born during the the current Corona pandemic, where local pubs are struggeling to survive. Friends of mine came up with the idea to donate some amount for every drink we would normally have in a pub, but now where consuming at home. Which we call: the **remoteDeckel** (remoteTab)!
+This idea has been born during the the current Corona pandemic, where local pubs are struggeling to survive. Friends of mine came up with the idea to donate some amount for every drink we would normally have in a pub, but now we're consuming at home. Which we call: the **remoteDeckel** (remoteTab)!
 
 ## Technology:
 
 This repo is currently mainly an experiment around the [Telegram Bot Api](https://core.telegram.org/bots/api), written in [Rust](https://www.rust-lang.org/).
 The project contains a `main` function which sets up the bot and it's configurations.
-And a `lib`, which containes different serializable types, that can be used in [Telegram](https://telegram.org) communications, database-types and persistence functionality.
+And a `lib`, which contains different serializable types, that can be used in [Telegram](https://telegram.org) communications, database-types and persistence functionality.
 
 This project uses several different rust crates. The main functionality comes from the following:
 
