@@ -7,13 +7,18 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use diesel::pg::data_types::PgTimestamp;
 use diesel::pg::types::money::PgMoney;
 
+
+// Everything higher than this cents value is forbidden
+// to prevent the user from unintentionally high donations
+pub static MAX_DAMAGE_ALLOWED: i64 = 1499;
+
 pub struct BotContext {
     current_user: models::User,
     conn: db::UserDbConn,
     chat_id: i32,
     request_message: String,
     // Currently not used
-    date: DateTime<Utc>,
+    _date: DateTime<Utc>,
 }
 
 impl BotContext {
@@ -29,7 +34,7 @@ impl BotContext {
             conn,
             chat_id,
             request_message: request_message.to_string(),
-            date: Utc.timestamp(timestamp, 0),
+            _date: Utc.timestamp(timestamp, 0),
         }
     }
 
@@ -41,15 +46,14 @@ impl BotContext {
         let response_text = match request_type {
             RequestType::Start => messages::WELCOME_MESSAGE.to_string(),
             RequestType::Order => {
-                if self.get_damage() > 1000 {
-                    format!("🤔 Du hast schon {:.2}€ auf dem Deckel.\nIch muss leider erst abrechnen bevor du mehr bestellen kannst.", money_in_eur(self.get_damage()))
-                } else {
-                    self.order_drink();
-                    "👍 Ich schreib's auf deinen Deckel.".to_string()
-                }
+                match self.order_drink() {
+                    Some(new_drink_count) => format!("👍 Ich schreib's auf deinen Deckel.\n🍻 Bisher sind es {} Biers", new_drink_count),
+                    None => format!("🤔 Du hast schon {:.2}€ auf dem Deckel.\n💰Der maximal erlaubte Schaden beträgt {:.2}€.\n💳 Ich muss leider erst abrechnen bevor du mehr bestellen kannst.", money_in_eur(self.get_damage()), money_in_eur(MAX_DAMAGE_ALLOWED)),
+                } 
+
             }
             RequestType::ShowDamage => format!(
-                "Du hast bisher {} Biers bestellt.\nBeim aktuellen Preis von {:.2}€ beträgt dein derzeitiger Deckel insgesamt {:.2}€.",
+                "Du hast bisher {} Biers 🍻 bestellt.\nBeim aktuellen Preis 💶 von {:.2}€ beträgt dein derzeitiger Deckel insgesamt {:.2}€.",
                 self.current_user.drink_count,
                 money_in_eur(self.current_user.price.0),
                 money_in_eur(self.get_damage())
@@ -77,15 +81,13 @@ impl BotContext {
             RequestType::ChangePrice => "Wähle einen neuen Getränkepreis.".to_string(),
             RequestType::NewPrice => {
                 let new_price = self.convert_price();
-                match new_price {
-                    Ok(price) if price <= 200 => {
-                        self.update_price(price);
+                match self.update_price(new_price) {
+                    Some(price) => {
                         format!(
                             "Alles klar, jedes Getränk kostet jetzt {:.2}€",
-                            money_in_eur(price)
-                        )
-                    }
-                    _ => unreachable!(),
+                            money_in_eur(price))
+                    },
+                    None => format!("Sorry, aber diese Erhöhung würde den zulässigen Schaden von {:.2}€ übersteigen.\nBitte zahle erst oder wähle einen anderen Preis.", money_in_eur(MAX_DAMAGE_ALLOWED)),
                 }
             }
             RequestType::ShowLast => {
@@ -125,10 +127,17 @@ impl BotContext {
         }
     }
 
-    pub fn order_drink(&mut self) {
-        let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.drink_count = Some(self.current_user.drink_count + 1);
-        db::update_user(self.current_user.id, &update_user, &self.conn);
+    pub fn order_drink(&mut self) -> Option<i16> {
+        let new_drink_count = self.current_user.drink_count + 1;
+        match (new_drink_count as i64 * self.current_user.price.0) < MAX_DAMAGE_ALLOWED {
+            true => {
+                let mut update_user = UpdateUser::from_user(&self.current_user);
+                update_user.drink_count = Some(new_drink_count);
+                db::update_user(self.current_user.id, &update_user, &self.conn);
+                Some(new_drink_count)
+            },
+            false => None,
+        }
     }
 
     pub fn get_damage(&self) -> i64 {
@@ -137,20 +146,30 @@ impl BotContext {
         drinks as i64 * price
     }
 
-    pub fn convert_price(&self) -> Result<i64, std::num::ParseIntError> {
+    pub fn convert_price(&self) -> i64 {
         let new_price = self.request_message.replace("€", "").replace(",", "");
         let new_price = if &new_price[..1] == "0" {
             new_price[1..].to_string()
         } else {
             new_price
         };
-        new_price.parse::<i64>()
+        match new_price.parse::<i64>() {
+            Ok(price) => price,
+            Err(_) => unreachable!("Should not happen because, there is no RequestType::* for anything outside the button-options"),
+        }
     }
 
-    pub fn update_price(&mut self, new_price: i64) {
-        let mut update_user = UpdateUser::from_user(&self.current_user);
-        update_user.price = Some(PgMoney(new_price));
-        db::update_user(self.current_user.id, &update_user, &self.conn);
+    pub fn update_price(&mut self, new_price: i64) -> Option<i64> {
+        let new_damage = self.current_user.drink_count as i64 * new_price;
+        match new_damage < MAX_DAMAGE_ALLOWED {
+            true => {
+                let mut update_user = UpdateUser::from_user(&self.current_user);
+                update_user.price = Some(PgMoney(new_price));
+                db::update_user(self.current_user.id, &update_user, &self.conn);
+                Some(new_price)
+            },
+            false => None,
+        }
     }
 
     pub fn erase_drinks(&mut self) {

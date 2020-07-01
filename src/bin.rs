@@ -14,7 +14,7 @@ extern crate rocket;
 #[macro_use]
 extern crate diesel_migrations;
 
-use bot_lib::bot_context::{self, money_in_eur, BotContext};
+use bot_lib::bot_context::{self, money_in_eur, BotContext, MAX_DAMAGE_ALLOWED};
 use bot_lib::bot_types::{Keyboards, Payload, RequestType};
 use bot_lib::telegram_types::{self, PreCheckoutQueryResponseMessage, ResponseMessage, Update};
 use bot_lib::{db, models};
@@ -131,7 +131,7 @@ fn create_answer_pre_checkout_response(query: &telegram_types::PreCheckoutQuery)
         Ok(payload) => payload,
         Err(e) => panic!("Could not parse pre_checkout_query.payload. Error: {}", e),
     };
-    let is_total_ok = payload.total < 1000;
+    let is_total_ok = payload.total < MAX_DAMAGE_ALLOWED;
     let answer_query = PreCheckoutQueryResponseMessage::new(&query.id, is_total_ok);
     let answer_query_json = serde_json::to_string(&answer_query).unwrap();
     answer_query_json
