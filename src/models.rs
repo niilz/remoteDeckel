@@ -1,4 +1,4 @@
-use crate::schema::users;
+use crate::schema::{payments, users};
 use diesel::data_types::{PgMoney, PgTimestamp};
 use diesel::{Identifiable, Insertable, Queryable};
 // Order must be the same as the columns (http://diesel.rs/guides/getting-started/)
@@ -44,4 +44,13 @@ impl UpdateUser {
             total: Some(user.last_total),
         }
     }
+}
+
+#[derive(Debug, Queryable, Identifiable)]
+pub struct Payment {
+    pub id: i32,
+    pub user_id: i32,
+    pub receipt_identifier: String,
+    pub payed_amount: PgMoney,
+    pub payed_at: PgTimestamp,
 }

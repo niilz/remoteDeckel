@@ -1,4 +1,14 @@
 table! {
+    payments (id) {
+        id -> Int4,
+        user_id -> Int4,
+        receipt_identifier -> Nullable<Varchar>,
+        payed_amount -> Money,
+        payed_at -> Timestamp,
+    }
+}
+
+table! {
     users (id) {
         id -> Int4,
         name -> Varchar,
@@ -11,3 +21,8 @@ table! {
         total -> Money,
     }
 }
+
+allow_tables_to_appear_in_same_query!(
+    payments,
+    users,
+);
