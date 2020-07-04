@@ -45,7 +45,6 @@ impl BotContext {
     ) -> serde_json::Result<String> {
         let response_text = match request_type {
             RequestType::Start => messages::WELCOME_MESSAGE.to_string(),
-            RequestType::Terms => messages::TERMS.to_string(),
             RequestType::Order => {
                 match self.order_drink() {
                     Some(new_drink_count) => format!("👍 Ich schreib's auf deinen Deckel.\n🍻 Bisher sind es {} Biers", new_drink_count),
@@ -210,9 +209,6 @@ impl BotContext {
         };
         if request_message == "/start" {
             return RequestType::Start;
-        }
-        if request_message == "/terms" {
-            return RequestType::Terms;
         }
         keyboards.get_request_type(&request_message)
     }

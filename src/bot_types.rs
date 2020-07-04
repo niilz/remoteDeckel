@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RequestType {
     Start,
-    Terms,
     Order,
     ShowDamage,
     BillPlease,
