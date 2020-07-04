@@ -1,4 +1,5 @@
 use crate::models;
+use crate::schema::payments::dsl::payments;
 use crate::schema::users::dsl::{id, total, users};
 use diesel::data_types::PgMoney;
 use diesel::prelude::*;
@@ -43,4 +44,12 @@ pub fn get_total_all(conn: &PgConnection) -> Vec<PgMoney> {
         .select(total)
         .load::<PgMoney>(conn)
         .expect("Could not sum the total of all users")
+}
+
+// PAYMENTS
+pub fn save_payment(new_payment: models::NewPayment, conn: &PgConnection) -> models::Payment {
+    diesel::insert_into(payments)
+        .values(new_payment)
+        .get_result(conn)
+        .expect("Could not save new payment")
 }

@@ -1,3 +1,4 @@
+use crate::bot_types::Payload;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -37,6 +38,14 @@ pub struct SuccessfulPayment {
     pub invoice_payload: String,
     pub telegram_payment_charge_id: String,
     pub provider_payment_charge_id: String,
+}
+impl SuccessfulPayment {
+    pub fn get_payload(&self) -> Payload {
+        match serde_json::from_str(&self.invoice_payload) {
+            Ok(payload) => payload,
+            Err(e) => panic!("Could not parse pre_checkout_query.payload. Error: {}", e),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

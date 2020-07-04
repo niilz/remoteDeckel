@@ -1,6 +1,6 @@
 use crate::bot_types::{Keyboards, Payload, RequestType};
-use crate::models::UpdateUser;
-use crate::telegram_types::LabeledPrice as lb;
+use crate::models::{NewPayment, UpdateUser};
+use crate::telegram_types::LabeledPrice as lp;
 use crate::telegram_types::{self, *};
 use crate::{db, messages, models};
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -221,8 +221,8 @@ impl BotContext {
         let provider_token =
             std::env::var("PROVIDER_TOKEN").expect("Could not get provider_token from environment");
         let prices = vec![
-            lb::new("Gesamt-Netto", self.get_damage_net()),
-            lb::new("Stripe-Gebühr", self.stripe_fee()),
+            lp::new("Gesamt-Netto", self.get_damage_net()),
+            lp::new("Stripe-Gebühr", self.stripe_fee()),
         ];
         let payload_result = serde_json::to_string(&Payload::new(
             self.current_user.id,
@@ -270,18 +270,30 @@ impl BotContext {
     }
 }
 
-// Payment is not on bot_context because we have to perform it after successful_payment, where we
-// don't have the user infos in the typical way.
-pub fn pay(payload: &Payload, conn: db::UserDbConn) {
+pub fn pay(successful_payment: &SuccessfulPayment, conn: db::UserDbConn) {
+    // TODO: Do something with successful_payment information
+    // And extract reply on successful_payment
+    // And run pay!!! might have to be extracted from Bot_Context
+    let payload = successful_payment.get_payload();
+
     let last_paid = (Utc::now() + Duration::hours(2)).timestamp();
     let new_last_total = payload.total;
     let total = payload.totals_sum + new_last_total;
     let mut update_user = UpdateUser::default();
+    
     update_user.last_paid = Some(PgTimestamp(last_paid));
     update_user.last_total = Some(PgMoney(new_last_total));
     update_user.total = Some(PgMoney(total));
     update_user.drink_count = Some(0);
     db::update_user(payload.user_id, &update_user, &conn);
+
+    let new_payment = NewPayment {
+        user_id: payload.user_id,
+        receipt_identifier: &successful_payment.provider_payment_charge_id,
+        payed_amount: PgMoney(payload.total),
+        payed_at: PgTimestamp(last_paid),
+    };
+    db::save_payment(new_payment, &conn);
 }
 
 // Helpers

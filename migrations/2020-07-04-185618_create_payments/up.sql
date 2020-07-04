@@ -2,7 +2,7 @@
 CREATE TABLE payments (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL,
-  receipt_identifier VARCHAR,
+  receipt_identifier VARCHAR NOT NULL,
   payed_amount MONEY NOT NULL,
   payed_at TIMESTAMP NOT NULL
 );

@@ -54,3 +54,12 @@ pub struct Payment {
     pub payed_amount: PgMoney,
     pub payed_at: PgTimestamp,
 }
+
+#[derive(Debug, Insertable)]
+#[table_name = "payments"]
+pub struct NewPayment<'a> {
+    pub user_id: i32,
+    pub receipt_identifier: &'a str,
+    pub payed_amount: PgMoney,
+    pub payed_at: PgTimestamp,
+}

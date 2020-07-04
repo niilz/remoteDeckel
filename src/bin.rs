@@ -66,25 +66,13 @@ fn handle_get(_metrics_request: MonitoringRequest) -> String {
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
     let json_response_str = match (update.pre_checkout_query.as_ref(), update.message.as_ref()) {
         (Some(query), None) => create_answer_pre_checkout_response(query),
-        (None, Some(message)) => {
-            match message.successful_payment.as_ref() {
-                None => create_response_message(message, conn),
-                Some(successful_payment) => {
-                    // TODO: Do something with successful_payment information
-                    // And extract reply on successful_payment
-                    // And run pay!!! might have to be extracted from Bot_Context
-                    let payload: Payload =
-                        match serde_json::from_str(&successful_payment.invoice_payload) {
-                            Ok(payload) => payload,
-                            Err(e) => {
-                                panic!("Could not parse pre_checkout_query.payload. Error: {}", e)
-                            }
-                        };
-                    bot_context::pay(&payload, conn);
-                    create_successful_payment_response(&payload)
-                }
+        (None, Some(message)) => match message.successful_payment.as_ref() {
+            None => create_response_message(message, conn),
+            Some(successful_payment) => {
+                bot_context::pay(&successful_payment, conn);
+                create_successful_payment_response(&successful_payment.get_payload())
             }
-        }
+        },
         _ => panic!("No query or message?...TODO: http 500 response"),
     };
 

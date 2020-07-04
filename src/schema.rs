@@ -2,7 +2,7 @@ table! {
     payments (id) {
         id -> Int4,
         user_id -> Int4,
-        receipt_identifier -> Nullable<Varchar>,
+        receipt_identifier -> Varchar,
         payed_amount -> Money,
         payed_at -> Timestamp,
     }
