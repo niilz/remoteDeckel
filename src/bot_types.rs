@@ -120,7 +120,7 @@ pub fn keyboard_factory(keyboard: &Vec<(RequestType, String)>) -> ReplyKeyboardM
         .collect();
     ReplyKeyboardMarkup {
         keyboard,
-        resize_keyboard: false,
+        resize_keyboard: true,
     }
 }
 

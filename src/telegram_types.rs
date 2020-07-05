@@ -109,6 +109,28 @@ pub struct ReplyKeyboardMarkup {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct InlineKeyboardMarkup {
+    pub inline_keyboard: Vec<Vec<InlineKeyboardButton>>,
+}
+impl InlineKeyboardMarkup {
+    pub fn new(amount_to_pay: f32) -> Self {
+        InlineKeyboardMarkup {
+            inline_keyboard: vec![vec![InlineKeyboardButton {
+                text: format!("Jetzt {:.2}€ spenden", amount_to_pay),
+                pay: true,
+            }]],
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InlineKeyboardButton {
+    pub text: String,
+    // pub url: String COULD BE used to open stripe-payout-plugin if nothing else works
+    pub pay: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InvoiceReplyMessage {
     // Must be sendInvoice
     pub method: String,
@@ -125,8 +147,10 @@ pub struct InvoiceReplyMessage {
     pub prices: Vec<LabeledPrice>,
     pub provider_data: Option<String>,
     pub photo_url: Option<String>,
-    // pub photo_width: i32,
-    // pub photo_height: i32,
+    pub photo_size: i32,
+    pub photo_width: i32,
+    pub photo_height: i32,
+    pub reply_markup: InlineKeyboardMarkup,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

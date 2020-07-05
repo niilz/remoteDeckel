@@ -250,10 +250,12 @@ impl BotContext {
             prices,
             // provider_data: Some("TODO what does stripe need?".to_string()),
             provider_data: None,
-            // photo_url: Some("../img/remoteDeckel-Logo.png".to_string()),
-            photo_url: None,
-            // TODO: change inline_keyboard_markup to "spenden" instead of "bezahlen".
-            // If possible change the three option below (without PayYes but with Steal and PayNo)
+            photo_url: Some("https://raw.githubusercontent.com/niilz/remoteDeckel/master/img/remoteDeckel-Logo.png".to_string()),
+            // TODO: FIGURE OUT how to apply phot_size/width/height
+            photo_size: 1,
+            photo_width: 3,
+            photo_height: 3,
+            reply_markup: InlineKeyboardMarkup::new(money_in_eur(self.get_damage())),
         }
     }
 
