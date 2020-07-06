@@ -64,6 +64,7 @@ fn handle_get(_metrics_request: MonitoringRequest) -> String {
 
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
+    bot_context::transfer_money();
     let json_response_str = match (update.pre_checkout_query.as_ref(), update.message.as_ref()) {
         (Some(query), None) => create_answer_pre_checkout_response(query),
         (None, Some(message)) => match message.successful_payment.as_ref() {

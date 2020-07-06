@@ -10,4 +10,5 @@ pub mod db;
 pub mod messages;
 pub mod models;
 pub mod schema;
+pub mod stripe_types;
 pub mod telegram_types;

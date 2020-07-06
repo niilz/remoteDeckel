@@ -1,4 +1,5 @@
 use crate::bot_types::{Keyboards, Payload, RequestType};
+use crate::stripe_types::*;
 use crate::models::{NewPayment, UpdateUser};
 use crate::telegram_types::LabeledPrice as lp;
 use crate::telegram_types::{self, *};
@@ -6,6 +7,8 @@ use crate::{db, messages, models};
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use diesel::pg::data_types::PgTimestamp;
 use diesel::pg::types::money::PgMoney;
+use reqwest;
+use reqwest::header::{self, HeaderMap};
 
 
 // Everything higher than this cents value is forbidden
@@ -296,6 +299,32 @@ pub fn pay(successful_payment: &SuccessfulPayment, conn: db::UserDbConn) {
         payed_at: PgTimestamp(last_paid),
     };
     db::save_payment(new_payment, &conn);
+}
+
+pub fn transfer_money() -> Result<(), reqwest::Error> {
+    let stripe_token = std::env::var("STRIPE_TOKEN_TEST").unwrap();
+    // TODO: Check if money is actually on Stripe-account
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, header::HeaderValue::from_str(&stripe_token).unwrap());
+    let client = reqwest::blocking::Client::builder()
+        .build()?;
+    let res = client
+        .get("https://api.stripe.com/v1/balance")
+        .bearer_auth(&stripe_token)
+        .send();
+    match res {
+        Ok(res) => {
+            println!("RES: {:?}", res);
+            match res.json::<Balance>() {
+                Ok(balance) => println!("BALANCE: {:?}", balance),
+                Err(e) => eprintln!("Could not deserialize balance: {:?}", e),
+            }
+        },
+        Err(e) => eprintln!("Request to Stripe did not work: {:?}", e),
+    };
+    // TODO: Make PaymentIntent
+    // TODO: Confirm Payment
+    Ok(())
 }
 
 // Helpers
