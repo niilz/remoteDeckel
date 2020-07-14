@@ -14,8 +14,9 @@ extern crate rocket;
 #[macro_use]
 extern crate diesel_migrations;
 
-use bot_lib::bot_context::{self, money_in_eur, BotContext, MAX_DAMAGE_ALLOWED};
+use bot_lib::bot_context::{BotContext, MAX_DAMAGE_ALLOWED};
 use bot_lib::bot_types::{Keyboards, Payload, RequestType};
+use bot_lib::payments::{self, money_in_eur};
 use bot_lib::telegram_types::{self, PreCheckoutQueryResponseMessage, ResponseMessage, Update};
 use bot_lib::{db, models};
 use dotenv::dotenv;
@@ -64,13 +65,12 @@ fn handle_get(_metrics_request: MonitoringRequest) -> String {
 
 #[post("/", format = "json", data = "<update>")]
 fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
-    bot_context::transfer_money();
     let json_response_str = match (update.pre_checkout_query.as_ref(), update.message.as_ref()) {
         (Some(query), None) => create_answer_pre_checkout_response(query),
         (None, Some(message)) => match message.successful_payment.as_ref() {
             None => create_response_message(message, conn),
             Some(successful_payment) => {
-                bot_context::pay(&successful_payment, conn);
+                payments::pay(&successful_payment, conn);
                 create_successful_payment_response(&successful_payment.get_payload())
             }
         },

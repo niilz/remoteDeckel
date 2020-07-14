@@ -19,3 +19,95 @@ pub struct Fund {
 pub struct SourceType {
     pub card: i32,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct PaymentIntent {
+    pub id: String,
+    pub amount: i32,
+    pub amount_received: i32,
+    pub currency: String,
+    pub application_fee_amount: Option<i32>,
+    pub created: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PaymentConfirmation {
+    pub id: String,
+    pub amount: i32,
+    pub amount_received: i32,
+    pub application: Option<String>,
+    pub charges: Charge,
+    pub confirmation_method: String,
+    pub created: i64,
+    pub currency: String,
+    pub description: Option<String>,
+    pub metadata: Option<MetaData>,
+    pub payment_method: String,
+    pub payment_method_types: Vec<String>,
+    pub setup_future_usage: Option<String>,
+    pub statement_descriptor: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Charge {
+    data: Vec<Data>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Data {
+    pub id: String,
+    pub amount: i32,
+    pub amount_refunded: i32,
+    pub application_fee_amount: Option<i32>,
+    pub balance_transaction: String,
+    pub billing_details: BillingDetails,
+    pub captured: bool,
+    pub created: i64,
+    pub currency: String,
+    pub description: Option<String>,
+    pub disputed: bool,
+    pub failure_message: Option<String>,
+    pub fraud_details: Option<FraudDetails>,
+    pub metadata: Option<MetaData>,
+    pub outcome: Outcome,
+    pub paid: bool,
+    pub payment_intent: String,
+    pub payment_method: String,
+    // TODO: Think about more fields, that could be reasonable to deserialize
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BillingDetails {
+    pub address: Address,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Address {
+    pub country: Option<String>,
+    pub postal_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MetaData {
+    pub tguser: Option<String>,
+    pub payload: Option<String>,
+    pub bot: Option<String>,
+    pub callback: Option<String>,
+    pub tgcharge_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Outcome {
+    network_status: String,
+    reason: Option<String>,
+    risk_level: String,
+    risk_score: i32,
+    seller_message: String,
+    #[serde(rename(deserialize = "type"))]
+    typ: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FraudDetails {}

@@ -1,8 +1,8 @@
 /target
 config*
-updateJson
 .env
 notes*
 rocket.toml
 .clever*
 .DS_Store
+jsonResponses
