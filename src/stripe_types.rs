@@ -100,14 +100,47 @@ pub struct MetaData {
 
 #[derive(Debug, Deserialize)]
 pub struct Outcome {
-    network_status: String,
-    reason: Option<String>,
-    risk_level: String,
-    risk_score: i32,
-    seller_message: String,
+    pub network_status: String,
+    pub reason: Option<String>,
+    pub risk_level: String,
+    pub risk_score: i32,
+    pub seller_message: String,
     #[serde(rename(deserialize = "type"))]
-    typ: String,
+    pub typ: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct FraudDetails {}
+
+#[derive(Debug, Deserialize)]
+pub struct ChargeResponse {
+    pub id: String,
+    pub amount: i32,
+    pub amount_refunded: i32,
+    pub balance_transaction: BalanceTransaction,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BalanceTransaction {
+    pub id: String,
+    pub amount: i32,
+    pub available_on: i64,
+    pub created: i64,
+    pub currency: String,
+    pub fee: i32,
+    pub fee_details: FeeDetails,
+    pub net: i32,
+    pub reporting_category: String,
+    pub status: String,
+    #[serde(rename(deserialize = "type"))]
+    pub typ: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FeeDetails {
+    pub amount: i32,
+    pub description: String,
+    #[serde(rename(deserialize = "type"))]
+    pub typ: String,
+    pub destination: String,
+}
