@@ -3,7 +3,7 @@ use crate::models::UpdateUser;
 use crate::telegram_types::LabeledPrice as lp;
 use crate::telegram_types::{self, *};
 use crate::{db, messages, models};
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use diesel::pg::types::money::PgMoney;
 use crate::payments::*;
 
@@ -222,7 +222,7 @@ impl BotContext {
             std::env::var("PROVIDER_TOKEN").expect("Could not get provider_token from environment");
         let prices = vec![
             lp::new("Gesamt-Netto", self.get_damage_net()),
-            lp::new("Stripe-Gebühr", self.stripe_fee()),
+            lp::new("Stripe-Gebühr", calc_stripe_fee(self.get_damage())),
         ];
         let payload_result = serde_json::to_string(&Payload::new(
             self.current_user.id,
@@ -239,9 +239,9 @@ impl BotContext {
             chat_id: self.chat_id,
             title: "Spendenrechnung".to_string(),
             description: format!(
-                "TEST-Rechnung für eine Spende in Höhe von {:.2}€ an deine Lieblingskneipe.\n(Der Betrag enthält eine Gebühr von {:.2}€, der von dem Payment-Provider Stripe erhoben wird.) DIES IST EIN TEST!\nZAHLUNGEN SIND NOCH NICHT MÖGLICH!",
+                "TEST-Rechnung für eine Spende in Höhe von {:.2}€ an deine Lieblingskneipe.\n(Der Betrag enthält etwa eine Gebühr von {:.2}€, der von dem Payment-Provider Stripe erhoben wird.)\nDIES IST EIN TEST!\nZAHLUNGEN SIND NOCH NICHT MÖGLICH!",
                 money_in_eur(self.get_damage()),
-                money_in_eur(self.stripe_fee() as i64),
+                money_in_eur(calc_stripe_fee(self.get_damage()) as i64),
             ),
             payload,
             provider_token,
@@ -252,22 +252,16 @@ impl BotContext {
             provider_data: None,
             photo_url: Some("https://raw.githubusercontent.com/niilz/remoteDeckel/master/img/remoteDeckel-Logo.png".to_string()),
             // TODO: FIGURE OUT how to apply phot_size/width/height
-            photo_size: 1,
-            photo_width: 3,
-            photo_height: 3,
+            photo_size: 1000,
+            photo_width: 100,
+            photo_height: 100,
             reply_markup: InlineKeyboardMarkup::new(money_in_eur(self.get_damage())),
         }
     }
 
-    fn stripe_fee(&self) -> i32 {
-        let fee_percentage = 0.014;
-        let fee_fix_amount = 0.25;
-        let raw_damage = money_in_eur(self.get_damage());
-        let total_damage = raw_damage * fee_percentage + fee_fix_amount;
-        (total_damage * 100_f32) as i32
-    }
 
     fn get_damage_net(&self) -> i32 {
-        self.get_damage() as i32 - self.stripe_fee()
+        let damage = self.get_damage();
+        damage as i32 - calc_stripe_fee(damage)
     }
 }

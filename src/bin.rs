@@ -18,6 +18,7 @@ use bot_lib::bot_context::{BotContext, MAX_DAMAGE_ALLOWED};
 use bot_lib::bot_types::{Keyboards, Payload, RequestType};
 use bot_lib::payments::{self, money_in_eur};
 use bot_lib::telegram_types::{self, PreCheckoutQueryResponseMessage, ResponseMessage, Update};
+use bot_lib::*;
 use bot_lib::{db, models};
 use dotenv::dotenv;
 use reqwest;
@@ -70,7 +71,10 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
         (None, Some(message)) => match message.successful_payment.as_ref() {
             None => create_response_message(message, conn),
             Some(successful_payment) => {
-                payments::pay(&successful_payment, conn);
+                match payments::pay(&successful_payment, conn) {
+                    Ok(_) => {}
+                    Err(e) => eprintln!("Could not process payment. Err: {}", e),
+                }
                 create_successful_payment_response(&successful_payment.get_payload())
             }
         },
@@ -175,27 +179,6 @@ fn get_text_from_message(telegram_message: &telegram_types::Message) -> String {
 fn bot_method_url(method: &str, api_key: &str) -> String {
     let telegram_base_url = "https://api.telegram.org/bot";
     format!("{}{}/{}", telegram_base_url, api_key, method)
-}
-
-fn get_args() -> Vec<String> {
-    std::env::args().collect()
-}
-
-fn get_ngrok_url() -> Option<String> {
-    let args = get_args();
-    match args.len() {
-        3 | 4 if args[1] == "url" => Some(args[2].to_string()),
-        _ => None,
-    }
-}
-
-fn is_test() -> bool {
-    let args = get_args();
-    match args.len() {
-        4 if args[3] == "test" => true,
-        2 if args[1] == "test" => true,
-        _ => false,
-    }
 }
 
 async fn set_webhook(bot_base_url: &str, api_key: &str) -> reqwest::Result<()> {

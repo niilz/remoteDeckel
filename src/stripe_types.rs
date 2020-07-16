@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Balance {
@@ -117,7 +117,13 @@ pub struct ChargeResponse {
     pub id: String,
     pub amount: i32,
     pub amount_refunded: i32,
+    pub application: String,
     pub balance_transaction: BalanceTransaction,
+    pub billing_details: BillingDetails,
+    pub calculated_statement_descriptor: String,
+    pub captured: bool,
+    pub created: i64,
+    pub metadata: MetaData,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,10 +133,12 @@ pub struct BalanceTransaction {
     pub available_on: i64,
     pub created: i64,
     pub currency: String,
+    pub description: String,
     pub fee: i32,
-    pub fee_details: FeeDetails,
+    pub fee_details: Vec<FeeDetails>,
     pub net: i32,
     pub reporting_category: String,
+    pub source: String,
     pub status: String,
     #[serde(rename(deserialize = "type"))]
     pub typ: String,
@@ -139,8 +147,8 @@ pub struct BalanceTransaction {
 #[derive(Debug, Deserialize)]
 pub struct FeeDetails {
     pub amount: i32,
+    pub currency: String,
     pub description: String,
     #[serde(rename(deserialize = "type"))]
     pub typ: String,
-    pub destination: String,
 }

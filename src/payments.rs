@@ -1,51 +1,44 @@
 use crate::db;
+use crate::is_test;
 use crate::models::{NewPayment, UpdateUser};
 use crate::stripe_types::*;
 use crate::telegram_types::SuccessfulPayment;
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{Duration, TimeZone, Utc};
 use diesel::pg::data_types::PgTimestamp;
 use diesel::pg::types::money::PgMoney;
 use reqwest::blocking::Client;
-use reqwest::header::{self, HeaderMap};
-use serde_json;
 
-pub fn pay(successful_payment: &SuccessfulPayment, conn: db::UserDbConn) {
+pub fn pay(
+    successful_payment: &SuccessfulPayment,
+    conn: db::UserDbConn,
+) -> Result<(), reqwest::Error> {
     persist_payment(successful_payment, &conn);
 
-    let stripe_token = std::env::var("STRIPE_TOKEN_TEST").unwrap();
-    let client = Client::builder().build().unwrap();
+    // TODO: propper error-handling
 
-    let balance = get_balance(&client, &stripe_token).unwrap();
-    let charge = get_charge(&successful_payment, &client, &stripe_token).unwrap();
+    let stripe_token = std::env::var("STRIPE_TOKEN_TEST").unwrap();
+    let client = Client::builder().build()?;
+
+    let balance = get_balance(&client, &stripe_token)?;
     let pending_amount = balance.pending.first().unwrap().amount;
-    let stripe_fee = charge.balance_transaction.fee;
+
+    let charge = get_charge_by_payment(&successful_payment, &client, &stripe_token)?;
     let transfer_amount = charge.balance_transaction.net;
-    let double_check = charge.amount - charge.balance_transaction.fee;
-    println!(
-        "transfer_amount: {} == double_check: {}",
-        transfer_amount, double_check
-    );
+
     if pending_amount > transfer_amount {
-        let payment_intent =
-            payment_intent_request(&client, &stripe_token, successful_payment.total_amount);
-        let reduced_balance = get_balance(&client, &stripe_token).unwrap();
-        if reduced_balance.pending.first().unwrap().amount == pending_amount - transfer_amount {
+        let payment_intent = payment_intent_request(&client, &stripe_token, transfer_amount)?;
+        let _confirm_payment = confirm_payment(&payment_intent.id, &client, &stripe_token)?;
+
+        let reduced_balance = get_balance(&client, &stripe_token)?;
+        let pending_amount_reduced = reduced_balance.pending.first().unwrap().amount;
+        if pending_amount_reduced != pending_amount - transfer_amount {
             println!(
-                "reduced_balance {:?} is EXACTLY like pending_amount {:?} - transfer_amount {:?}.
-            confirmation is initialized",
-                reduced_balance, pending_amount, transfer_amount
-            );
-            let confirm_request = match payment_intent {
-                Ok(pi) => confirm_payment(&pi.id, &client, &stripe_token),
-                Err(e) => Err(e),
-            };
-        } else {
-            println!(
-                "reduced_balance {:?} is not equal to pending_amount {:?} - transfer_amount {:?}",
-                reduced_balance, pending_amount, transfer_amount
+                "reduced_balance {:?} is NOT EQUAL to pending_amount {:?} - transfer_amount {:?}",
+                pending_amount_reduced, pending_amount, transfer_amount
             );
         }
     }
+    Ok(())
 }
 
 fn persist_payment(successful_payment: &SuccessfulPayment, conn: &db::UserDbConn) {
@@ -84,28 +77,12 @@ fn payment_intent_request(
         ("transfer_data[destination]", &destination_account),
     ];
 
-    let res = client
+    client
         .post("https://api.stripe.com/v1/payment_intents")
         .bearer_auth(&token)
         .form(payment_intent_forminfo)
-        .send();
-
-    match res {
-        Ok(payment_intent_res) => match payment_intent_res.json::<PaymentIntent>() {
-            Ok(pi) => {
-                println!("PaymentIntent responded with: {:?}", pi);
-                Ok(pi)
-            }
-            Err(e) => {
-                eprintln!("Could not Deserialize payment_intent. Err: {}", e);
-                Err(e)
-            }
-        },
-        Err(e) => {
-            eprintln!("Could not reslove payment_intent_request. Err: {}", e);
-            Err(e)
-        }
-    }
+        .send()?
+        .json::<PaymentIntent>()
 }
 
 fn confirm_payment(
@@ -130,12 +107,11 @@ pub fn get_balance(client: &Client, token: &str) -> Result<Balance, reqwest::Err
     client
         .get("https://api.stripe.com/v1/balance")
         .bearer_auth(token)
-        .form(&[("expand[]", "balance_transaction")])
         .send()?
         .json::<Balance>()
 }
 
-pub fn get_charge(
+pub fn get_charge_by_payment(
     successful_payment: &SuccessfulPayment,
     client: &Client,
     token: &str,
@@ -147,6 +123,7 @@ pub fn get_charge(
     client
         .get(&charge_endpoint)
         .bearer_auth(token)
+        .form(&[("expand[]", "balance_transaction")])
         .send()?
         .json::<ChargeResponse>()
 }
@@ -154,4 +131,12 @@ pub fn get_charge(
 // Helpers
 pub fn money_in_eur(money: i64) -> f32 {
     money as f32 / 100.00
+}
+
+pub fn calc_stripe_fee(damage: i64) -> i32 {
+    let fee_percentage = if is_test() { 0.029 } else { 0.014 };
+    let fee_fix_amount = 0.25;
+    let raw_damage = money_in_eur(damage);
+    let total_damage = raw_damage * fee_percentage + fee_fix_amount;
+    (total_damage * 100_f32) as i32
 }
