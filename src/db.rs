@@ -1,5 +1,5 @@
 use crate::models;
-use crate::schema::payments::dsl::payments;
+use crate::schema::payments::dsl::{id as pay_id, payments, transfer_id};
 use crate::schema::users::dsl::{id, total, users};
 use diesel::data_types::PgMoney;
 use diesel::prelude::*;
@@ -52,4 +52,15 @@ pub fn save_payment(new_payment: models::NewPayment, conn: &PgConnection) -> mod
         .values(new_payment)
         .get_result(conn)
         .expect("Could not save new payment")
+}
+
+pub fn save_transfer_id(
+    payment_id: i32,
+    successful_transfer_id: &str,
+    conn: &PgConnection,
+) -> models::Payment {
+    diesel::update(payments.filter(pay_id.eq(payment_id)))
+        .set(transfer_id.eq(successful_transfer_id))
+        .get_result(conn)
+        .expect("Could not update payment with transfer_id")
 }

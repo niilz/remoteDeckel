@@ -5,6 +5,7 @@ table! {
         receipt_identifier -> Varchar,
         payed_amount -> Money,
         payed_at -> Timestamp,
+        transfer_id -> Nullable<Varchar>,
     }
 }
 

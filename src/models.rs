@@ -53,6 +53,7 @@ pub struct Payment {
     pub receipt_identifier: String,
     pub payed_amount: PgMoney,
     pub payed_at: PgTimestamp,
+    pub transfer_id: Option<String>,
 }
 
 #[derive(Debug, Insertable)]

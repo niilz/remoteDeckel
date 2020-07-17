@@ -1,6 +1,6 @@
 use crate::db;
 use crate::is_test;
-use crate::models::{NewPayment, UpdateUser};
+use crate::models::{NewPayment, Payment, UpdateUser};
 use crate::stripe_types::*;
 use crate::telegram_types::SuccessfulPayment;
 use chrono::{Duration, TimeZone, Utc};
@@ -12,9 +12,8 @@ pub fn pay(
     successful_payment: &SuccessfulPayment,
     conn: db::UserDbConn,
 ) -> Result<(), reqwest::Error> {
-    persist_payment(successful_payment, &conn);
-
-    // TODO: propper error-handling
+    // User has successfuly payed, so this fact is saved
+    let payment = persist_payment(successful_payment, &conn);
 
     let stripe_token = std::env::var("STRIPE_TOKEN_TEST").unwrap();
     let client = Client::builder().build()?;
@@ -25,9 +24,14 @@ pub fn pay(
     let charge = get_charge_by_payment(&successful_payment, &client, &stripe_token)?;
     let transfer_amount = charge.balance_transaction.net;
 
+    // Check current available balance to be sure, that transfer-amount is covered
     if pending_amount > transfer_amount {
         let payment_intent = payment_intent_request(&client, &stripe_token, transfer_amount)?;
-        let _confirm_payment = confirm_payment(&payment_intent.id, &client, &stripe_token)?;
+        let confirm_payment = confirm_payment(&payment_intent.id, &client, &stripe_token);
+        match confirm_payment {
+            Ok(confirmed) => set_transfer_id_on_payment(payment.id, &confirmed.id, &conn),
+            Err(e) => eprintln!("Payment could not be transfered. Err: {}", e),
+        }
 
         let reduced_balance = get_balance(&client, &stripe_token)?;
         let pending_amount_reduced = reduced_balance.pending.first().unwrap().amount;
@@ -41,7 +45,7 @@ pub fn pay(
     Ok(())
 }
 
-fn persist_payment(successful_payment: &SuccessfulPayment, conn: &db::UserDbConn) {
+fn persist_payment(successful_payment: &SuccessfulPayment, conn: &db::UserDbConn) -> Payment {
     let payload = successful_payment.get_payload();
 
     let last_paid = (Utc::now() + Duration::hours(2)).timestamp();
@@ -61,7 +65,7 @@ fn persist_payment(successful_payment: &SuccessfulPayment, conn: &db::UserDbConn
         payed_amount: PgMoney(payload.total),
         payed_at: PgTimestamp(last_paid),
     };
-    db::save_payment(new_payment, &conn);
+    db::save_payment(new_payment, &conn)
 }
 
 fn payment_intent_request(
@@ -126,6 +130,10 @@ pub fn get_charge_by_payment(
         .form(&[("expand[]", "balance_transaction")])
         .send()?
         .json::<ChargeResponse>()
+}
+
+fn set_transfer_id_on_payment(payment_id: i32, transfer_id: &str, conn: &db::UserDbConn) {
+    db::save_transfer_id(payment_id, transfer_id, conn);
 }
 
 // Helpers
