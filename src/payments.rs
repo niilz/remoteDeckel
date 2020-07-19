@@ -3,7 +3,7 @@ use crate::is_test;
 use crate::models::{NewPayment, Payment, UpdateUser};
 use crate::stripe_types::*;
 use crate::telegram_types::SuccessfulPayment;
-use chrono::{Duration, TimeZone, Utc};
+use chrono::{Duration, Utc};
 use diesel::pg::data_types::PgTimestamp;
 use diesel::pg::types::money::PgMoney;
 use reqwest::blocking::Client;

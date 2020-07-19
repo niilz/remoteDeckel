@@ -253,8 +253,8 @@ impl BotContext {
             photo_url: Some("https://raw.githubusercontent.com/niilz/remoteDeckel/master/img/remoteDeckel-Logo.png".to_string()),
             // TODO: FIGURE OUT how to apply phot_size/width/height
             photo_size: 1000,
-            photo_width: 100,
-            photo_height: 100,
+            photo_width: 300,
+            photo_height: 300,
             reply_markup: InlineKeyboardMarkup::new(money_in_eur(self.get_damage())),
         }
     }

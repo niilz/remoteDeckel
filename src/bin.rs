@@ -23,7 +23,7 @@ use bot_lib::{db, models};
 use dotenv::dotenv;
 use reqwest;
 use rocket::fairing::AdHoc;
-use rocket::http::Status;
+use rocket::http::{RawStr, Status};
 use rocket::request::{self, FromRequest, Request};
 use rocket::response::content;
 use rocket::{post, routes, Outcome, Rocket};
@@ -64,8 +64,16 @@ fn handle_get(_metrics_request: MonitoringRequest) -> String {
     "Received Monitoring GET-Request from clever cloud".to_string()
 }
 
-#[post("/", format = "json", data = "<update>")]
-fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<String> {
+#[post("/<bot_endpoint>", format = "json", data = "<update>")]
+fn handle_update(
+    bot_endpoint: &RawStr,
+    conn: db::UserDbConn,
+    update: Json<Update>,
+) -> content::Json<String> {
+    if !is_request_legit(bot_endpoint) {
+        return content::Json("{ 'response': 403 }".to_string());
+    }
+
     let json_response_str = match (update.pre_checkout_query.as_ref(), update.message.as_ref()) {
         (Some(query), None) => create_answer_pre_checkout_response(query),
         (None, Some(message)) => match message.successful_payment.as_ref() {
@@ -82,6 +90,16 @@ fn handle_update(conn: db::UserDbConn, update: Json<Update>) -> content::Json<St
     };
 
     content::Json(json_response_str)
+}
+
+fn is_request_legit(attempted_route: &RawStr) -> bool {
+    let key = if is_test() { "API_KEY_TEST" } else { "API_KEY" };
+    let legit_route = std::env::var(key).unwrap();
+    if attempted_route != legit_route {
+        eprintln!("Bot was tried to be accessed on route {}.", attempted_route);
+        return false;
+    }
+    true
 }
 
 fn create_response_message(
@@ -181,12 +199,13 @@ fn bot_method_url(method: &str, api_key: &str) -> String {
     format!("{}{}/{}", telegram_base_url, api_key, method)
 }
 
-async fn set_webhook(bot_base_url: &str, api_key: &str) -> reqwest::Result<()> {
+async fn set_webhook(bot_url: &str, api_key: &str) -> reqwest::Result<()> {
     // Register update webHook with Telegram
     let telegram_set_webhook_url = format!(
-        "{}?url={}",
+        "{}?url={}/{}",
         bot_method_url("setWebhook", api_key),
-        bot_base_url
+        bot_url,
+        api_key
     );
     println!(
         "Tries to register webHook with GET to: {}",
