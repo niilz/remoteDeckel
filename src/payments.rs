@@ -15,7 +15,13 @@ pub fn pay(
     // User has successfuly payed, so this fact is saved
     let payment = persist_payment(successful_payment, &conn);
 
-    let stripe_token = std::env::var("STRIPE_TOKEN_TEST").unwrap();
+    let stripe_token_str = if is_test() {
+        "STRIPE_TOKEN_TEST"
+    } else {
+        "STRIPE_TOKEN"
+    };
+
+    let stripe_token = std::env::var(stripe_token_str).unwrap();
     let client = Client::builder().build()?;
 
     let balance = get_balance(&client, &stripe_token)?;
